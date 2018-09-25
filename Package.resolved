@@ -147,10 +147,10 @@
       },
       {
         "package": "Vapor",
-        "repositoryURL": "https://github.com/vapor/vapor.git",
+        "repositoryURL": "https://github.com/spevans/vapor.git",
         "state": {
           "branch": "master",
-          "revision": "157d3b15336caa882662cc75024dd04b2e225246",
+          "revision": "df47710a5669081430c3160b79c5c1429244a24a",
           "version": null
         }
       },
