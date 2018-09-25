@@ -1,0 +1,86 @@
+
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maximum-scale=1" media="(device-height: 568px)">
+        <link rel="stylesheet" type="text/css" href="github.css">
+    </head>
+    <body>
+<div id="readme" class="readme blob instapaper_body">
+<article class="markdown-body entry-content" itemprop="text">
+
+<table style="border-collapse: collapse; border: 0px;">
+    <tr style="border: none">
+        <td style="border: none; text-align: center; width: 40%"><a href="working-with-c.html">&lt; Prev</a></td>
+        <td style="border: none; text-align: center; width: 20%"><a href="index.html">Top</a></td>
+        <td style="border: none; text-align: center; width: 40%"><a href="other-notes.html">Next &gt;</a></td>
+    </tr>
+</table>
+
+<h1><a id="user-content-issues-with-swift" class="anchor" href="#issues-with-swift" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" role="img" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Issues with Swift</h1>
+
+<p>Random issues I have found with Swift</p>
+
+<h2><a id="user-content-swift-error-messages" class="anchor" href="#swift-error-messages" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" role="img" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Swift error messages</h2>
+
+<p>Sometimes the error messages produced by the compiler can be a bit misleading.
+When writing the above example I made a small mistake with the <code>#define ARRAY_SIZE</code>
+which led to this error message:</p>
+
+<div class="highlight highlight-source-shell"><pre><span class="pl-c1">test</span>.swift:4:51: error: cannot convert value of <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>UnsafeMutablePointer&lt;UInt8&gt;<span class="pl-pds">'</span></span> to expected argument <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>UnsafeMutablePointer&lt;_&gt;<span class="pl-pds">'</span></span>
+<span class="pl-c1">let</span> testArray = UnsafeMutableBufferPointer(start: arrayPtr, count: ARRAY_SIZE)
+                                                  ^~~~~~~~</pre></div>
+
+<p>which makes the error look like the <code>arrayPtr</code> assignment. Changing the line to:</p>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">let</span> testArray <span class="pl-k">=</span> <span class="pl-c1">UnsafeMutableBufferPointer</span>(start: <span class="pl-c1">UnsafeMutablePointer</span>(arrayPtr), count: ARRAY_SIZE)</pre></div>
+
+<p>gives a new error message:</p>
+
+<div class="highlight highlight-source-shell"><pre><span class="pl-c1">test</span>.swift:4:90: error: cannot convert value of <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>Int32<span class="pl-pds">'</span></span> to expected argument <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>Int<span class="pl-pds">'</span></span>
+<span class="pl-c1">let</span> testArray = UnsafeMutableBufferPointer(start: UnsafeMutablePointer(arrayPtr), count: ARRAY_SIZE)
+                                                                                         ^~~~~~~~~~</pre></div>
+
+<p>Which shows the actual error, that <code>#define ARRAY_SIZE  8</code> should have been
+<code>#define ARRAY_SIZE  8L</code> so that it is an <code>Int</code> instead of an <code>Int32</code>. Fixing
+this now shows that the previous change is also actually an error:</p>
+
+<div class="highlight highlight-source-shell"><pre><span class="pl-c1">test</span>.swift:4:17: error: cannot invoke initializer <span class="pl-k">for</span> <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>UnsafeMutableBufferPointer&lt;_&gt;<span class="pl-pds">'</span></span> with an argument list of <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>(start: UnsafeMutablePointer&lt;_&gt;, count: Int)<span class="pl-pds">'</span></span>
+<span class="pl-c1">let</span> testArray = UnsafeMutableBufferPointer(start: UnsafeMutablePointer(arrayPtr), count: ARRAY_SIZE)
+                ^
+<span class="pl-c1">test</span>.swift:4:17: note: expected an argument list of <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>(start: UnsafeMutablePointer&lt;Element&gt;, count: Int)<span class="pl-pds">'</span></span>
+<span class="pl-c1">let</span> testArray = UnsafeMutableBufferPointer(start: UnsafeMutablePointer(arrayPtr), count: ARRAY_SIZE)
+                ^</pre></div>
+
+<p>The <code>UnsafeMutablePointer(arrayPtr)</code> should have been <code>UnsafeMutablePointer&lt;UInt8&gt;(arrayPtr)</code>
+or simply not converted at all since it was already of the correct type. Quite
+often Swift error messages dont quite pinpoint the actual error in a helpful way
+although quite often the issue has been the wrong numeric type <code>Int</code> instead of
+<code>Int32</code> or <code>UInt8</code> etc.</p>
+
+<h2><a id="user-content-lack-of-bitfields" class="anchor" href="#lack-of-bitfields" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" role="img" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Lack of bitfields</h2>
+
+<p>[FIXME]</p>
+
+<ul>
+<li>@noreturn</li>
+<li>Lack of bitfields</li>
+<li>malloc()</li>
+<li>varargs (print etc)</li>
+<li>throw v nil</li>
+<li>Other minor issues</li>
+</ul>
+
+
+<table style="border-collapse: collapse; border: 0px;">
+    <tr style="border: none">
+        <td style="border: none; text-align: center; width: 40%"><a href="working-with-c.html">&lt; Prev</a></td>
+        <td style="border: none; text-align: center; width: 20%"><a href="index.html">Top</a></td>
+        <td style="border: none; text-align: center; width: 40%"><a href="other-notes.html">Next &gt;</a></td>
+    </tr>
+</table>
+
+</article>
+</div>
+</body>

@@ -1,0 +1,6 @@
+ drivers/usb/media/ibmcam.c   |   23 +++--
+ drivers/usb/media/konicawc.c |  181 ++++++++++++++++++++++++++++++++-----------
+ drivers/usb/media/ultracam.c |   18 +---
+ drivers/usb/media/usbvideo.c |   73 ++++++++++-------
+ drivers/usb/media/usbvideo.h |    4 
+ 5 files changed, 204 insertions(+), 95 deletions(-)

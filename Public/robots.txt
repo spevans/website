@@ -1,0 +1,5 @@
+# Empty robots.txt file to get rid of 404's
+
+User-agent: *
+Allow:
+

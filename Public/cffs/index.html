@@ -1,0 +1,91 @@
+<!-- $Id -->
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <title>Cisco Flash File System tool</title>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  </head>
+
+  <body>
+    <h1>Cisco Flash File System tool</h1>
+	This is a tool for manipulating the flash file system used on Cisco flash memory cards.
+	It requires an MTD driver for the flash cards and so only runs on Linux. There is an
+	appropiate driver <a href="../pcmciamtd/">here</a>.
+	<p>
+	This code is licensed under the GPL v2.
+	<p>
+	<b>This software is still alpha!</b> It has only been tested with a Class B filesystem.
+	<p>
+	<h2>Supported Operations</h2>
+	<li>dir	- list files.
+	<li>delete - mark a file as deleted
+	<li>erase - erase whole flash
+	<li>get - Get a file from flash
+	<li>put - Put a file onto flash
+	<li>fsck - Check file checksums and check blank space is properly erased.
+	
+	<h2>Supported Filesystems</h2>
+	There are three different Cisco flash file systems (Class A, B and C).<br>
+	See <a href="http://www.cisco.com/warp/public/63/pcmciamatrix.html">
+	PCMCIA Filesystem Compatibility Matrix and Filesystem Information</a> for information on
+	which filesystems on used on which routers.<br>
+	See <a href="http://www.cisco.com/univercd/cc/td/doc/product/software/ios120/12cgcr/fun_c/fcprt2/fcifs.htm">
+	Using the Cisco IOS File System</a> for more information on cisco flash IOS commands.<br>
+	<p>
+			  
+	This program fully supports Class B and partially supports Class A.<br>
+
+	<h2>Usage</h2>
+<pre>
+cffs - cisco flash file system reader
+Version 0.05  (C) Simon Evans 2002 (spse@secret.org.uk)
+Usage: cffs &lt;device&gt; &lt;option&gt; [files...]
+        &lt;device&gt;  MTD Char device (eg /dev/mtd/0)
+        -l, --dir       List files
+        -d, --delete    Delete files
+        -e, --erase     Erase flash
+        -g, --get       Get files from flash
+        -p, --put       Put files onto flash
+        -f, --fsck      Check file system
+        -h, --help      Usage information
+        -v, --version   Show version
+</pre>
+<a href="cffs.1.html">Manual Page</a>
+<p>
+<h3>Examples</h3>
+An MTD device must always be specified. A default is not coded in because on a lot of PDAs and
+embedded systems /dev/mtd/0 usually points to a boot loader or other important partition. In
+this case, a careless <i>cffs --erase</i> would be fatal!.
+<p>
+Directory Listing
+<p>
+<pre>
+% ./cffs /dev/mtd/0 --dir
+	880   &lt;no date&gt;  [5B8E] [FFFF] running-config
+	856   &lt;no date&gt;  [E2DC] [FFFF] startup-config
+%
+</pre>
+<p>
+Deleting a file
+<p>
+<pre>
+% ./cffs /dev/mtd/0 --delete running-config
+% ./cffs --dir
+	880   &lt;no date&gt;  [5B8E] [FFFE] running-config [deleted]
+	856   &lt;no date&gt;  [E2DC] [FFFF] startup-config
+%
+</pre>
+<p>
+
+	<h2>Download</h2>
+	Current Version is 0.06<br><a href="cffs-0.06.tgz">cffs-0.06.tgz</a><br>
+
+    <hr>
+    <address><a href="mailto:spse@secret.org.uk">Simon Evans</a></address>
+<!-- Created: Thu Jul  4 16:28:42 BST 2002 -->
+<!-- hhmts start -->
+Last modified: Mon Sep 30 02:51:37 BST 2002
+<!-- hhmts end -->
+  </body>
+</html>

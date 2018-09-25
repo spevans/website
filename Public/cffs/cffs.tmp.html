@@ -1,0 +1,94 @@
+<HTML>
+<HEAD>
+<TITLE>Manual page for cffs</TITLE>
+</HEAD>
+<BODY>
+<H1>Manual page for cffs</H1>
+<HR>
+<PRE>
+<!-- Manpage converted by man2html 3.0.1 -->
+
+
+</PRE>
+<H2>SYNOPSIS</H2><PRE>
+       cffs &lt;device&gt; --dir
+       cffs &lt;device&gt; --delete FILES...
+       cffs &lt;device&gt; --erase
+       cffs &lt;device&gt; --get [FILES...]
+       cffs &lt;device&gt; --put FILES...
+       cffs &lt;device&gt; --fsck
+       cffs --help
+       cffs --version
+
+
+</PRE>
+<H2>DESCRIPTION</H2><PRE>
+       cffs  is  a tool for manipulating Cisco flash file system images stored
+       on removable flash.
+
+
+</PRE>
+<H2>OPTIONS</H2><PRE>
+       -l, --dir
+              List files.
+
+       -d, --delete
+              Delete files matching the list FILES.
+
+       -e, --erase
+              Format the flash, erasing all data.
+
+       -g, --get
+              Get FILES from the flash and save to current directory.
+
+       -p, --put
+              Put FILES onto the flash.
+
+       -f, --fsck
+              Check the file system integrety, checksum all  files  and  check
+              blank area is fully blank.
+
+       -h, --help
+              Show help and exit.
+
+       -v, --version
+              Show version information.
+
+       &lt;device&gt; must be an MTD char device (eg /dev/mtd/0).
+
+
+</PRE>
+<H2>EXAMPLES</H2><PRE>
+       Show listing of file on /dev/mtd/0
+
+              cffs /dev/mtd/0 --dir
+
+       Get all files from flash
+
+              cffs /dev/mtd/0 --get '*'
+
+
+
+</PRE>
+<H2>LICENSE</H2><PRE>
+       cffs  is licensed under the GNU Public License v2. See the file COPYING
+       in the source for details.
+
+
+</PRE>
+<H2>AUTHOR</H2><PRE>
+       Copyright (C) 2002 Simon Evans &lt;spse@secret.org.uk&gt;.
+
+
+
+
+</PRE>
+<H2>Version 0.06                     Sept 17, 2002                         cffs(1)</H2><PRE>
+</PRE>
+<HR>
+<ADDRESS>
+Man(1) output converted with
+<a href="http://www.oac.uci.edu/indiv/ehood/man2html.html">man2html</a>
+</ADDRESS>
+</BODY>
+</HTML>

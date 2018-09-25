@@ -1,0 +1,123 @@
+$ swiftc -v
+Swift version 3.0-dev (LLVM f54fa77021, Clang 0e6c928036, Swift 80f0044adf)
+Target: x86_64-unknown-linux-gnu
+
+$ cat main.swift
+print("hello")
+
+
+Standard dynamic binary:
+
+$ swiftc -O -o main main.swift
+$ ldd main
+	linux-vdso.so.1 (0x00007ffed5637000)
+	libswiftCore.so => /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/libswiftCore.so (0x00007f212c094000)
+	libstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f212bd89000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f212ba88000)
+	libgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f212b872000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f212b4c7000)
+	libpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f212b2aa000)
+	libdl.so.2 => /lib/x86_64-linux-gnu/libdl.so.2 (0x00007f212b0a6000)
+	libicuuc.so.52 => /usr/lib/x86_64-linux-gnu/libicuuc.so.52 (0x00007f212ad28000)
+	libicui18n.so.52 => /usr/lib/x86_64-linux-gnu/libicui18n.so.52 (0x00007f212a916000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f212c476000)
+	libicudata.so.52 => /usr/lib/x86_64-linux-gnu/libicudata.so.52 (0x00007f21290a9000)
+
+$ ./main
+hello
+
+
+Staticaly linking in libSwiftCore:
+
+$ swiftc -O -o main -static-stdlib main.swift
+$ ldd main
+	linux-vdso.so.1 (0x00007ffca5323000)
+	libdl.so.2 => /lib/x86_64-linux-gnu/libdl.so.2 (0x00007fd5a6a5f000)
+	libpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007fd5a6842000)
+	libbsd.so.0 => /lib/x86_64-linux-gnu/libbsd.so.0 (0x00007fd5a6632000)
+	libicui18n.so.52 => /usr/lib/x86_64-linux-gnu/libicui18n.so.52 (0x00007fd5a6220000)
+	libicuuc.so.52 => /usr/lib/x86_64-linux-gnu/libicuuc.so.52 (0x00007fd5a5ea2000)
+	libstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007fd5a5b97000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007fd5a5896000)
+	libgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007fd5a5680000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007fd5a52d5000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007fd5a6c63000)
+	libicudata.so.52 => /usr/lib/x86_64-linux-gnu/libicudata.so.52 (0x00007fd5a3a68000)
+
+$ ./main
+hello
+
+
+Full command:
+
+$ swiftc -v -O -o main -static-stdlib main.swift
+Swift version 3.0-dev (LLVM f54fa77021, Clang 0e6c928036, Swift 80f0044adf)
+Target: x86_64-unknown-linux-gnu
+/home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/bin/swift -frontend -c -primary-file main.swift -target x86_64-unknown-linux-gnu -disable-objc-interop -O -module-name main -o /tmp/main-23bb06.o
+/home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/bin/swift-autolink-extract /tmp/main-23bb06.o -o /tmp/main-2f6852.autolink
+/usr/bin/clang++ -fuse-ld=gold -target x86_64-unknown-linux-gnu -Xlinker -rpath -Xlinker /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/x86_64/swift_begin.o /tmp/main-23bb06.o -L /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift_static/linux -ldl -lpthread -lbsd -licui18n -licuuc -Xlinker -export-dynamic -Xlinker --exclude-libs -Xlinker ALL --target=x86_64-unknown-linux-gnu -lswiftCore @/tmp/main-2f6852.autolink /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/x86_64/swift_end.o -o main
+
+
+Breaking it down:
+
+$ swiftc -O -v -emit-object -o main.o main.swift
+$ swift-autolink-extract main.o >main.autolink
+$ cat main.autolink
+-lswiftCore
+$ /usr/bin/clang++ -fuse-ld=gold -target x86_64-unknown-linux-gnu -Xlinker -rpath -Xlinker /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/x86_64/swift_begin.o main.o -L /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift_static/linux -ldl -lpthread -lbsd -licui18n -licuuc -Xlinker -export-dynamic -Xlinker --exclude-libs -Xlinker ALL --target=x86_64-unknown-linux-gnu -lswiftCore @main.autolink /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/x86_64/swift_end.o -o main
+$ ./main
+hello
+
+
+Specify .a files to use instead of .so, remove -lbsd -licui18n -licuuc from command line:
+
+
+$ cat main.autolink 
+-lswiftCore
+/usr/lib/x86_64-linux-gnu/libbsd.a
+/usr/lib/x86_64-linux-gnu/libicui18n.a
+/usr/lib/x86_64-linux-gnu/libicuuc.a
+
+$ /usr/bin/clang++ -fuse-ld=gold -target x86_64-unknown-linux-gnu -Xlinker -rpath -Xlinker /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/x86_64/swift_begin.o main.o -L /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift_static/linux -ldl -lpthread  -Xlinker -export-dynamic -Xlinker --exclude-libs -Xlinker ALL --target=x86_64-unknown-linux-gnu -lswiftCore @main.autolink /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/x86_64/swift_end.o -o main
+/usr/lib/x86_64-linux-gnu/libicuuc.a(udata.ao):function openCommonData(char const*, int, UErrorCode*): error: undefined reference to 'icudt52_dat'
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+
+Need to find icudt52_dat
+
+$ for i in /usr/lib/x86_64-linux-gnu/libicu*.a; do echo $i; nm $i|grep icudt52_dat; done
+/usr/lib/x86_64-linux-gnu/libicudata.a
+0000000000000000 R icudt52_dat
+/usr/lib/x86_64-linux-gnu/libicui18n.a
+/usr/lib/x86_64-linux-gnu/libicuio.a
+/usr/lib/x86_64-linux-gnu/libicule.a
+/usr/lib/x86_64-linux-gnu/libiculx.a
+/usr/lib/x86_64-linux-gnu/libicutest.a
+/usr/lib/x86_64-linux-gnu/libicutu.a
+/usr/lib/x86_64-linux-gnu/libicuuc.a
+                 U icudt52_dat
+$
+
+Add /usr/lib/x86_64-linux-gnu/libicudata.a into main.autolink and try again:
+
+$ cat main.autolink
+-lswiftCore
+/usr/lib/x86_64-linux-gnu/libbsd.a
+/usr/lib/x86_64-linux-gnu/libicui18n.a
+/usr/lib/x86_64-linux-gnu/libicuuc.a
+/usr/lib/x86_64-linux-gnu/libicudata.a
+
+$ /usr/bin/clang++ -fuse-ld=gold -target x86_64-unknown-linux-gnu -Xlinker -rpath -Xlinker /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/x86_64/swift_begin.o main.o -L /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift_static/linux -ldl -lpthread  -Xlinker -export-dynamic -Xlinker --exclude-libs -Xlinker ALL --target=x86_64-unknown-linux-gnu -lswiftCore @main.autolink /home/spse/swift-DEVELOPMENT-SNAPSHOT-2016-09-04-a-ubuntu14.04/usr/lib/swift/linux/x86_64/swift_end.o -o main
+$ ./main
+hello
+
+$ ldd main
+	linux-vdso.so.1 (0x00007ffef2934000)
+	libdl.so.2 => /lib/x86_64-linux-gnu/libdl.so.2 (0x00007f0ad3d5b000)
+	libpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f0ad3b3e000)
+	libstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f0ad3833000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f0ad3532000)
+	libgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f0ad331c000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f0ad2f71000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f0ad3f5f000)
+$ 
+

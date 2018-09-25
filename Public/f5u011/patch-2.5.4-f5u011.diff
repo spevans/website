@@ -1,0 +1,461 @@
+diff -urN -X /home/spse/dontdiff linux-2.5.4/drivers/usb/Config.help /home/spse/src/linux-25/drivers/usb/Config.help
+--- linux-2.5.4/drivers/usb/Config.help	Mon Feb 11 15:41:53 2002
++++ /home/spse/src/linux-25/drivers/usb/Config.help	Tue Feb 12 01:55:38 2002
+@@ -370,6 +370,7 @@
+ CONFIG_USB_CATC
+   Say Y if you want to use one of the following 10Mbps USB Ethernet
+   device based on the EL1210A chip. Supported devices are:
++    Belkin F5U011
+     Belkin F5U111
+     CATC NetMate
+     CATC NetMate II
+diff -urN -X /home/spse/dontdiff linux-2.5.4/drivers/usb/catc.c /home/spse/src/linux-25/drivers/usb/catc.c
+--- linux-2.5.4/drivers/usb/catc.c	Mon Feb 11 15:41:53 2002
++++ /home/spse/src/linux-25/drivers/usb/catc.c	Tue Feb 12 01:54:50 2002
+@@ -7,6 +7,9 @@
+  *
+  *  Based on the work of
+  *		Donald Becker
++ * 
++ *  Old chipset support added by Simon Evans <spse@secret.org.uk> 2002
++ *    - adds support for Belkin F5U011
+  */
+ 
+ /*
+@@ -70,6 +73,7 @@
+ #define RX_MAX_BURST		15	/* Max packets per rx buffer (> 0, < 16) */
+ #define TX_MAX_BURST		15	/* Max full sized packets per tx buffer (> 0) */
+ #define CTRL_QUEUE		16	/* Max control requests in flight (power of two) */
++#define RX_PKT_SZ		1600	/* Max size of receive packet for F5U011 */
+ 
+ /*
+  * Control requests.
+@@ -80,6 +84,7 @@
+ 	GetMac =	0xf2,
+ 	Reset =		0xf4,
+ 	SetMac =	0xf5,
++	SetRxMode =     0xf5,  /* F5U011 only */
+ 	WriteROM =	0xf8,
+ 	SetReg =	0xfa,
+ 	GetReg =	0xfb,
+@@ -127,6 +132,7 @@
+ 	RxForceOK =	0x04,
+ 	RxMultiCast =	0x08,
+ 	RxPromisc =	0x10,
++	AltRxPromisc =  0x20, /* F5U011 uses different bit */
+ };
+ 
+ enum led_values {
+@@ -180,6 +186,10 @@
+ 	} ctrl_queue[CTRL_QUEUE];
+ 
+ 	struct urb *tx_urb, *rx_urb, *irq_urb, *ctrl_urb;
++
++	int is_f5u011;	/* Set if device is an F5U011 */
++	u8 rxmode[2];	/* Used for F5U011 */
++	atomic_t recq_sz; /* Used for F5U011 - counter of waiting rx packets */
+ };
+ 
+ /*
+@@ -193,6 +203,10 @@
+ #define catc_write_mem(catc, addr, buf, size)		catc_ctrl_msg(catc, USB_DIR_OUT, WriteMem, 0, addr, buf, size)
+ #define catc_read_mem(catc, addr, buf, size)		catc_ctrl_msg(catc, USB_DIR_IN,  ReadMem, 0, addr, buf, size)
+ 
++#define f5u011_rxmode(catc, rxmode)			catc_ctrl_msg(catc, USB_DIR_OUT, SetRxMode, 0, 1, rxmode, 2)
++#define f5u011_rxmode_async(catc, rxmode)		catc_ctrl_async(catc, USB_DIR_OUT, SetRxMode, 0, 1, &rxmode, 2, NULL)
++#define f5u011_mchash_async(catc, hash)			catc_ctrl_async(catc, USB_DIR_OUT, SetRxMode, 0, 2, &hash, 8, NULL)
++
+ #define catc_set_reg_async(catc, reg, val)		catc_ctrl_async(catc, USB_DIR_OUT, SetReg, val, reg, NULL, 0, NULL)
+ #define catc_get_reg_async(catc, reg, cb)		catc_ctrl_async(catc, USB_DIR_IN, GetReg, 0, reg, NULL, 1, cb)
+ #define catc_write_mem_async(catc, addr, buf, size)	catc_ctrl_async(catc, USB_DIR_OUT, WriteMem, 0, addr, buf, size, NULL)
+@@ -244,6 +258,58 @@
+ 	catc->netdev->last_rx = jiffies;
+ }
+ 
++static void f5u011_rx_done(struct urb *urb)
++{
++	struct catc *catc = urb->context;
++	u8 *pkt_start = urb->transfer_buffer;
++	struct sk_buff *skb;
++	int pkt_len;
++	unsigned char *p;
++	int status;
++
++	if (urb->status) {
++		dbg("rx_done, err = %d", urb->status);
++		return;
++	}
++
++	dbg("rx_done, status %d, length %d", urb->status, urb->actual_length);
++
++	pkt_len = urb->actual_length;
++	pkt_len -= 4; /* remove CRC from end */
++	
++	p = pkt_start;
++	dbg("rxing packet of %d bytes [ %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x -> %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x]",
++	     pkt_len,
++	     *(p+6), *(p+7), *(p+8), *(p+9), *(p+10), *(p+11),
++	     *p, *(p+1), *(p+2), *(p+3), *(p+4), *(p+5));
++	
++
++	if (!(skb = dev_alloc_skb(pkt_len)))
++		return;
++	  
++	skb->dev = catc->netdev;
++	eth_copy_and_sum(skb, pkt_start, pkt_len, 0);
++	skb_put(skb, pkt_len);
++	
++	skb->protocol = eth_type_trans(skb, catc->netdev);
++	dbg("Passing packet to netif");
++	netif_rx(skb);
++	
++	catc->stats.rx_packets++;
++	catc->stats.rx_bytes += pkt_len;
++	catc->netdev->last_rx = jiffies;
++	if(atomic_read(&catc->recq_sz)) {
++		atomic_dec(&catc->recq_sz);
++		dbg("getting extra packet");
++		urb->dev = catc->usbdev;
++		if ((status = usb_submit_urb(urb, GFP_KERNEL)) < 0) {
++			dbg("submit(rx_urb) status %d", status);
++		}
++	} else {
++		clear_bit(RX_RUNNING, &catc->flags);
++	}
++}
++
+ static void catc_irq_done(struct urb *urb)
+ {
+ 	struct catc *catc = urb->context;
+@@ -274,6 +340,48 @@
+ 	}
+ }
+ 
++static void f5u011_irq_done(struct urb *urb)
++{
++	struct catc *catc = urb->context;
++	u8 *data = urb->transfer_buffer;
++	int status;
++	u16 len;
++
++	len = be16_to_cpup((u16*)data);
++	len &= 0x0fff;
++
++	dbg("handling irq, status %d, data %02x %02x %02x %02x %02x len = %u", urb->status,
++	     data[0], data[1], data[2], data[3], data[4], len);
++	
++	if (urb->status) {
++		dbg("irq_done, status %d, data %02x %02x.", urb->status, data[0], data[1]);
++		return;
++	}
++
++	if (data[0] == 0x90) {
++		netif_carrier_on(catc->netdev);
++	}
++
++	if (data[0] == 0xa0) {
++		netif_carrier_off(catc->netdev);
++	}
++
++	if (len) {
++		if(test_and_set_bit(RX_RUNNING, &catc->flags)) {
++			atomic_inc(&catc->recq_sz);
++			dbg("RX_RUNNING");
++			return;
++		}
++		catc->rx_urb->dev = catc->usbdev;
++		if ((status = usb_submit_urb(catc->rx_urb, GFP_KERNEL)) < 0) {
++			err("submit(rx_urb) status %d", status);
++			return;
++		} 
++	}
++}
++
++
++
+ /*
+  * Transmit routines.
+  */
+@@ -367,6 +475,82 @@
+ 	usb_unlink_urb(catc->tx_urb);
+ }
+ 
++static void f5u011_tx_done(struct urb *urb)
++{
++	struct catc *catc = urb->context;
++
++	dbg("tx_done, status = %d", urb->status);
++	clear_bit(TX_RUNNING, &catc->flags);
++	netif_wake_queue(catc->netdev);
++
++	if(urb->actual_length != urb->transfer_buffer_length) {
++		dbg("TX ERROR!!! (actual = %d txfer = %d)", urb->actual_length, urb->transfer_buffer_length);
++	}
++
++
++	if (urb->status == -ECONNRESET) {
++		dbg("Tx Reset.");
++		urb->transfer_flags &= ~USB_ASYNC_UNLINK;
++		urb->status = 0;
++		catc->netdev->trans_start = jiffies;
++		catc->stats.tx_errors++;
++		clear_bit(TX_RUNNING, &catc->flags);
++		netif_wake_queue(catc->netdev);
++		return;
++	}
++
++	if (urb->status) {
++		dbg("tx_done, status %d, length %d", urb->status, urb->actual_length);
++		return;
++	}
++}
++
++static int f5u011_hard_start_xmit(struct sk_buff *skb, struct net_device *netdev)
++{
++	struct catc *catc = netdev->priv;
++	char *tx_buf;
++	unsigned char *p;
++	int status;
++	short len;
++
++	netif_stop_queue(netdev);
++	if(test_and_set_bit(TX_RUNNING, &catc->flags)) {
++		dbg("TX RUNNING!");
++		
++		return 1;
++	}
++
++	dbg("sending %d bytes", skb->len);
++	
++	tx_buf = catc->tx_buf[0];
++	*((u16*)tx_buf) = cpu_to_be16((u16)skb->len);
++	memcpy(tx_buf + 2, skb->data, skb->len);
++	len = skb->len + 2;
++	len = (len + 63) & ~63;
++	catc->tx_urb->transfer_buffer_length = len;
++	catc->tx_urb->transfer_buffer = tx_buf;
++	catc->tx_urb->dev = catc->usbdev;
++	p = catc->tx_urb->transfer_buffer+2;
++	dbg("txing %d bytes in URB [ %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x "
++	    "-> %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x]",
++	     len, *(p+6), *(p+7), *(p+8), *(p+9), *(p+10), *(p+11),
++	     *p, *(p+1), *(p+2), *(p+3), *(p+4), *(p+5));
++	     
++	if ((status = usb_submit_urb(catc->tx_urb, GFP_KERNEL)) < 0) {
++		dbg("submit(tx_urb), status %d", status);
++		return 1;
++	}
++
++	catc->netdev->trans_start = jiffies;
++	catc->stats.tx_bytes += skb->len;
++	catc->stats.tx_packets++;
++
++	dev_kfree_skb(skb);
++	dbg("packet sent");
++	return 0;
++}
++
++
+ /*
+  * Control messages.
+  */
+@@ -567,6 +751,38 @@
+ 	catc_write_mem_async(catc, 0xfa80, catc->multicast, 64);
+ }
+ 
++static void f5u011_set_multicast_list(struct net_device *netdev)
++{
++	struct catc *catc = netdev->priv;
++	struct dev_mc_list *mc;
++	
++	int i;
++
++	memset(catc->multicast, 0, 8);
++
++	if (netdev->flags & IFF_PROMISC) {
++		dbg("setting PROMISC");
++		memset(catc->multicast, 0xff, 8);
++		catc->rxmode[0] |= AltRxPromisc;
++	} else {
++		catc->rxmode[0] &= ~AltRxPromisc;
++	}
++
++	if (netdev->flags & IFF_ALLMULTI) {
++		dbg("setting ALLMULTI");
++		memset(&catc->multicast, 0xff, 8);
++	} else {
++		for (i = 0, mc = netdev->mc_list; mc && i < netdev->mc_count; i++, mc = mc->next) {
++			u32 crc = ether_crc_le(6, mc->dmi_addr);
++			catc->multicast[crc >> 29] |= 1 << ((crc >> 26) & 7);
++		}
++	}
++	f5u011_mchash_async(catc, catc->multicast);
++	dbg("Setting RX mode to %2.2X %2.2X", catc->rxmode[0], catc->rxmode[1]);
++	f5u011_rxmode_async(catc, catc->rxmode);
++}
++
++
+ /*
+  * ioctl's
+  */
+@@ -591,6 +807,29 @@
+                         return -EFAULT;
+                 return 0;
+         }
++
++	/* get settings */
++	case ETHTOOL_GSET:
++		if(catc->is_f5u011) {
++			struct ethtool_cmd ecmd = { ETHTOOL_GSET, 
++						    SUPPORTED_10baseT_Half | SUPPORTED_TP, 
++						    ADVERTISED_10baseT_Half | ADVERTISED_TP, 
++						    SPEED_10, 
++						    DUPLEX_HALF, 
++						    PORT_TP, 
++						    0, 
++						    XCVR_INTERNAL, 
++						    AUTONEG_DISABLE, 
++						    1, 
++						    1 
++			};
++			if (copy_to_user(useraddr, &ecmd, sizeof(ecmd)))
++				return -EFAULT;
++			return 0;
++		} else {
++			return -EOPNOTSUPP;
++		}
++
+         /* get link status */
+         case ETHTOOL_GLINK: {
+                 struct ethtool_value edata = {ETHTOOL_GLINK};
+@@ -632,7 +871,8 @@
+ 
+ 	netif_start_queue(netdev);
+ 
+-	mod_timer(&catc->timer, jiffies + STATS_UPDATE);
++	if(!catc->is_f5u011)
++		mod_timer(&catc->timer, jiffies + STATS_UPDATE);
+ 
+ 	return 0;
+ }
+@@ -643,7 +883,8 @@
+ 
+ 	netif_stop_queue(netdev);
+ 
+-	del_timer_sync(&catc->timer);
++	if(!catc->is_f5u011)
++		del_timer_sync(&catc->timer);
+ 
+ 	usb_unlink_urb(catc->rx_urb);
+ 	usb_unlink_urb(catc->tx_urb);
+@@ -657,6 +898,51 @@
+  * USB probe, disconnect.
+  */
+ 
++static void *f5u011_init(struct catc *catc, unsigned int ifnum)
++{
++	struct net_device *netdev = catc->netdev;
++	struct usb_device *usbdev = catc->usbdev;
++	int i;
++
++	atomic_set(&catc->recq_sz, 0);
++
++	FILL_CONTROL_URB(catc->ctrl_urb, usbdev, usb_sndctrlpipe(usbdev, 0),
++		NULL, NULL, 0, catc_ctrl_done, catc);
++
++	FILL_BULK_URB(catc->tx_urb, usbdev, usb_sndbulkpipe(usbdev, 1),
++		NULL, 0, f5u011_tx_done, catc);
++
++	FILL_BULK_URB(catc->rx_urb, usbdev, usb_rcvbulkpipe(usbdev, 1),
++		catc->rx_buf, RX_PKT_SZ, f5u011_rx_done, catc);
++
++	FILL_INT_URB(catc->irq_urb, usbdev, usb_rcvintpipe(usbdev, 2),
++                catc->irq_buf, 2, f5u011_irq_done, catc, 1);
++
++	netdev->hard_start_xmit = f5u011_hard_start_xmit;
++	netdev->set_multicast_list = f5u011_set_multicast_list;
++	
++
++	dbg("Performing reset\n");
++	catc_reset(catc);
++	dbg("Getting MAC from SEEROM.");
++	catc_get_mac(catc, netdev->dev_addr);
++
++	dbg("Setting RX Mode");
++	catc->rxmode[0] = RxEnable | RxPolarity | RxMultiCast;
++	catc->rxmode[1] = 0;
++	f5u011_rxmode(catc, catc->rxmode);
++	dbg("Init done.");
++
++	printk(KERN_INFO "%s: Belkin F5U011 USB Ethernet at usb%d:%d.%d, ",
++	       catc->netdev->name, catc->usbdev->bus->busnum, catc->usbdev->devnum,
++	       ifnum);
++	for (i = 0; i < 5; i++) 
++		printk("%2.2x:", netdev->dev_addr[i]);
++	printk("%2.2x.\n", netdev->dev_addr[i]);
++	catc->is_f5u011 = 1;
++	return catc;
++}
++
+ static void *catc_probe(struct usb_device *usbdev, unsigned int ifnum, const struct usb_device_id *id)
+ {
+ 	struct net_device *netdev;
+@@ -670,9 +956,16 @@
+ 	}
+ 
+ 	catc = kmalloc(sizeof(struct catc), GFP_KERNEL);
++	if(!catc)
++		return NULL;
++
+ 	memset(catc, 0, sizeof(struct catc));
+ 
+ 	netdev = init_etherdev(0, 0);
++	if(!netdev) {
++		kfree(catc);
++		return NULL;
++	}
+ 
+ 	netdev->open = catc_open;
+ 	netdev->hard_start_xmit = catc_hard_start_xmit;
+@@ -701,9 +994,22 @@
+ 	if ((!catc->ctrl_urb) || (!catc->tx_urb) || 
+ 	    (!catc->rx_urb) || (!catc->irq_urb)) {
+ 		err("No free urbs available.");
++		if(catc->ctrl_urb) usb_free_urb(catc->ctrl_urb);
++		if(catc->tx_urb)   usb_free_urb(catc->tx_urb);
++		if(catc->rx_urb)   usb_free_urb(catc->rx_urb);
++		if(catc->irq_urb)  usb_free_urb(catc->irq_urb);
++		kfree(netdev);
++		kfree(catc);
+ 		return NULL;
+ 	}
+ 
++	/* The F5U011 has the same vendor/product as the netmate but a device version of 0x130 */
++	if(usbdev->descriptor.idVendor == 0x0423 && usbdev->descriptor.idProduct == 0xa &&
++	   catc->usbdev->descriptor.bcdDevice == 0x0130	) {
++		dbg("Testing for f5u011");
++		return f5u011_init(catc, ifnum);
++	}
++	
+ 	FILL_CONTROL_URB(catc->ctrl_urb, usbdev, usb_sndctrlpipe(usbdev, 0),
+ 		NULL, NULL, 0, catc_ctrl_done, catc);
+ 
+@@ -750,7 +1056,7 @@
+ 
+ 	dbg("Filling the multicast list.");
+ 
+-	memset(broadcast, 0xff, 8);
++	memset(broadcast, 0xff, 6);
+ 	catc_multicast(broadcast, catc->multicast);
+ 	catc_multicast(netdev->dev_addr, catc->multicast);
+ 	catc_write_mem(catc, 0xfa80, catc->multicast, 64);
+@@ -795,7 +1101,7 @@
+  */
+ 
+ static struct usb_device_id catc_id_table [] = {
+-	{ USB_DEVICE(0x0423, 0xa) },	/* CATC Netmate */
++	{ USB_DEVICE(0x0423, 0xa) },	/* CATC Netmate, Belkin F5U011 */
+ 	{ USB_DEVICE(0x0423, 0xc) },	/* CATC Netmate II, Belkin F5U111 */
+ 	{ USB_DEVICE(0x08d1, 0x1) },	/* smartBridges smartNIC */
+ 	{ }
+

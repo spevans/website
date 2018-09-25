@@ -1,0 +1,75 @@
+<HTML>
+<BODY>
+<PRE>
+<!-- Manpage converted by man2html 3.0.1 -->
+
+[1mSYNOPSIS[0m
+       [1mcffs [22m&lt;device&gt; --dir
+       [1mcffs [22m&lt;device&gt; --delete FILES...
+       [1mcffs [22m&lt;device&gt; --erase
+       [1mcffs [22m&lt;device&gt; --get [FILES...]
+       [1mcffs [22m&lt;device&gt; --put FILES...
+       [1mcffs [22m&lt;device&gt; --fsck
+       [1mcffs [22m--help
+       [1mcffs [22m--version
+
+[1mDESCRIPTION[0m
+       cffs  is  a tool for manipulating Cisco flash file system images stored
+       on removable flash.
+
+[1mOPTIONS[0m
+       [1m-l, --dir[0m
+              List files.
+
+       [1m-d, --delete[0m
+              Delete files matching the list FILES.
+
+       [1m-e, --erase[0m
+              Format the flash, erasing all data.
+
+       [1m-g, --get[0m
+              Get FILES from the flash and save to current directory.
+
+       [1m-p, --put[0m
+              Put FILES onto the flash.
+
+       [1m-f, --fsck[0m
+              Check the file system integrety, checksum all  files  and  check
+              blank area is fully blank.
+
+       [1m-h, --help[0m
+              Show help and exit.
+
+       [1m-v, --version[0m
+              Show version information.
+
+       [1m&lt;device&gt; must be an MTD char device (eg /dev/mtd/0).[0m
+
+[1mEXAMPLES[0m
+       Show listing of file on /dev/mtd/0
+
+              cffs /dev/mtd/0 --dir
+
+       Get all files from flash
+
+              cffs /dev/mtd/0 --get '*'
+
+
+[1mLICENSE[0m
+       cffs  is licensed under the GNU Public License v2. See the file COPYING
+       in the source for details.
+
+[1mAUTHOR[0m
+       Copyright (C) 2002 Simon Evans &lt;spse@secret.org.uk&gt;.
+
+
+
+Version 0.05                      Jul 7, 2002                          <B>cffs(1)</B>
+</PRE>
+<HR>
+<ADDRESS>
+Man(1) output converted with
+<a href="http://www.oac.uci.edu/indiv/ehood/man2html.html">man2html</a>
+</ADDRESS>
+</BODY>
+</HTML>

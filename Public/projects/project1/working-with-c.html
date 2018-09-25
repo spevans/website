@@ -1,0 +1,449 @@
+
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maximum-scale=1" media="(device-height: 568px)">
+        <link rel="stylesheet" type="text/css" href="github.css">
+    </head>
+    <body>
+<div id="readme" class="readme blob instapaper_body">
+<article class="markdown-body entry-content" itemprop="text">
+
+<table style="border-collapse: collapse; border: 0px;">
+    <tr style="border: none">
+        <td style="border: none; text-align: center; width: 40%"><a href="initialisation.html">&lt; Prev</a></td>
+        <td style="border: none; text-align: center; width: 20%"><a href="index.html">Top</a></td>
+        <td style="border: none; text-align: center; width: 40%"><a href="other-notes.html">Next &gt;</a></td>
+    </tr>
+</table>
+
+<h1><a id="user-content-working-with-c" class="anchor" href="#working-with-c" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Working with C</h1>
+
+<p>[Note: This information applies to Swift3]</p>
+
+<p>The <a href="https://github.com/apple/swift/blob/master/docs/CallingConvention.rst#the-swift-calling-convention">Swift calling convention</a>
+basically states that calls from Swift to C should follow the platform ABI and
+that all the Swift compiler needs are correct headers with the C function
+prototypes and other types.</p>
+
+<p>Calling Swift from C is not currently guaranteed to work since Swift will
+doesnt try to define an external calling convention for its functions so that
+it has more flexibilty with internal Swift to Swift calls.</p>
+
+<p>However currently only a few Swift functions are called from C/asm and these
+either take no parameters or a few scalar values so its easy to abuse the
+guarantee for the few functions need.</p>
+
+<p>The easiest way to export C types and function prototypes is to have one main
+header file which includes all others and then use the <code>-import-objc-header</code>
+option to <code>swiftc</code> to use it.</p>
+
+<p>Access to assembly is easy using static inline assembly declared in header
+files eg:</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-k">static</span> <span class="pl-k">inline</span> <span class="pl-c1">uint64_t</span>
+<span class="pl-en">getCR3</span>()
+{
+        <span class="pl-c1">uint64_t</span> res;
+        <span class="pl-k">asm</span> <span class="pl-smi">volatile</span> (<span class="pl-s"><span class="pl-pds">"</span>mov <span class="pl-c1">%%</span>cr3, <span class="pl-ii">%</span>0<span class="pl-pds">"</span></span> : <span class="pl-s"><span class="pl-pds">"</span>=r<span class="pl-pds">"</span></span> (res) : : );
+        <span class="pl-k">return</span> res;
+}
+
+
+<span class="pl-k">static</span> <span class="pl-k">inline</span> <span class="pl-k">void</span>
+<span class="pl-en">setCR3</span>(<span class="pl-c1">uint64_t</span> value)
+{
+        <span class="pl-k">asm</span> <span class="pl-smi">volatile</span> (<span class="pl-s"><span class="pl-pds">"</span>mov <span class="pl-ii">%</span>0, <span class="pl-c1">%%</span>cr3<span class="pl-pds">"</span></span> : : <span class="pl-s"><span class="pl-pds">"</span>r<span class="pl-pds">"</span></span> (value) : );
+}</pre></div>
+
+<p>Allows the CR3 register to be get/set easily using <code>let addr = getCR3()</code> and
+<code>setCR3(addr)</code> etc.</p>
+
+<h2><a id="user-content-pointers" class="anchor" href="#pointers" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Pointers</h2>
+
+<p>Pointers in Swift use the types <code>UnsafePointer</code> and <code>UnsafeMutablePointer</code> and
+can be created from an address using the <code>init(bitPattern: UInt)?</code> method. It
+returns an Optional which will be <code>nil</code> if the address was 0. </p>
+
+<p>Pointer values (uintptr_t) can be represented using <code>UInt</code>. A couple of macros
+allow symbols to be exported from C to Swift:</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// Export as [symbol]_ptr of type UnsafePointer&lt;Void&gt;</span>
+#<span class="pl-k">define</span> <span class="pl-en">EXPORTED_SYMBOL_AS_VOIDPTR</span>(<span class="pl-v">x</span>) \
+        <span class="pl-k">static</span> <span class="pl-k">inline</span> <span class="pl-k">const</span> <span class="pl-k">void</span> *x##_ptr() { <span class="pl-k">extern</span> <span class="pl-c1">uintptr_t</span> x; <span class="pl-k">return</span> &amp;x; }
+
+<span class="pl-c">// Export as [symbol]_ptr of type UnsafePointer&lt;t&gt;</span>
+#<span class="pl-k">define</span> <span class="pl-en">EXPORTED_SYMBOL_AS_PTR</span>(<span class="pl-v">x, t</span>) \
+        <span class="pl-k">static</span> <span class="pl-k">inline</span> <span class="pl-k">const</span> t *x##_ptr() { <span class="pl-k">extern</span> t x; <span class="pl-k">return</span> &amp;x; }
+
+<span class="pl-c">// Export as [symbol]_addr as a unitptr_t to be manipulated as a UInt</span>
+#<span class="pl-k">define</span> <span class="pl-en">EXPORTED_SYMBOL_AS_UINTPTR</span>(<span class="pl-v">x</span>) \
+        <span class="pl-k">static</span> <span class="pl-k">inline</span> <span class="pl-c1">uintptr_t</span> x##_addr() { <span class="pl-k">extern</span> <span class="pl-c1">uintptr_t</span> x; <span class="pl-k">return</span> (<span class="pl-c1">uintptr_t</span>)&amp;x; }</pre></div>
+
+<p><code>UnsafePointer</code> and <code>UnsafeMutablePointer</code> values can be converted to a
+<code>UInt</code> if the address is needed using the <code>bitPattern</code> argument:</p>
+
+<p>With a simple extension allowing it to be a property:</p>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">extension</span> <span class="pl-c1">UnsafePointer</span> {
+    <span class="pl-k">var</span> address: <span class="pl-c1">UInt</span> {
+        <span class="pl-k">return</span> <span class="pl-c1">UInt</span>(bitPattern: <span class="pl-k">self</span>)
+    }
+}
+
+<span class="pl-k">extension</span> <span class="pl-c1">UnsafeMutablePointer</span> {
+    <span class="pl-k">var</span> address: <span class="pl-c1">UInt</span> {
+        <span class="pl-k">return</span> <span class="pl-c1">UInt</span>(bitPattern: <span class="pl-k">self</span>)
+    }
+}</pre></div>
+
+<p>Although using functions to return the address of a symbol may look a bit
+cumbersome, the use of inlined functions along with the linking creating a
+binary with a specific start address (as in the case of a kernel etc) means
+that the function gets converted to the absolute address of the symbol at link
+time so there is no calling overhead or excess pollution of the name space with
+lots of <code>*_ptr()</code> and <code>*_addr()</code> functions.</p>
+
+<h2><a id="user-content-swift-function-names" class="anchor" href="#swift-function-names" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Swift function names</h2>
+
+<p>Swift function names use name mangling to include the module name and method
+signature. However when exporting to C or asm this can be inconvenient
+especially if the function signature changes. <code>@_silgen_name</code> can be used to
+provide an override for a function so that it has a consistent name:</p>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">func</span> <span class="pl-en">function1</span>(a: <span class="pl-c1">Int</span>) <span class="pl-k">-&gt;</span> <span class="pl-c1">UInt</span> {
+    <span class="pl-k">return</span> <span class="pl-c1">UInt</span>(a)
+}
+
+<span class="pl-k">@_silgen_name</span>(<span class="pl-s"><span class="pl-pds">"</span>function2<span class="pl-pds">"</span></span>)
+<span class="pl-k">func</span> <span class="pl-en">function2</span>(a: <span class="pl-c1">Int</span>) <span class="pl-k">-&gt;</span> <span class="pl-c1">UInt</span> {
+    <span class="pl-k">return</span> <span class="pl-c1">UInt</span>(a)
+}</pre></div>
+
+<p>converts to</p>
+
+<div class="highlight highlight-source-assembly"><pre><span class="pl-en">Disassembly of section .text:</span>
+
+<span class="pl-c1">0000000000000000</span><span class="pl-en"> &lt;_TF4test9function1FSiSu&gt;:</span>
+<span class="pl-en">   </span><span class="pl-c1">0</span><span class="pl-en">:   </span><span class="pl-c1">55</span><span class="pl-en">                      </span><span class="pl-k">push</span><span class="pl-en">   %</span><span class="pl-v">rbp</span>
+<span class="pl-en">   </span><span class="pl-c1">1</span><span class="pl-en">:   </span><span class="pl-c1">48</span><span class="pl-en"> </span><span class="pl-c1">89</span><span class="pl-en"> e5                </span><span class="pl-k">mov</span><span class="pl-en">    %</span><span class="pl-v">rsp</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rbp</span>
+<span class="pl-en">   </span><span class="pl-c1">4</span><span class="pl-en">:   </span><span class="pl-c1">50</span><span class="pl-en">                      </span><span class="pl-k">push</span><span class="pl-en">   %</span><span class="pl-v">rax</span>
+<span class="pl-en">   </span><span class="pl-c1">5</span><span class="pl-en">:   </span><span class="pl-c1">48</span><span class="pl-en"> </span><span class="pl-c1">83</span><span class="pl-en"> ff </span><span class="pl-c1">00</span><span class="pl-en">             </span><span class="pl-k">cmp</span>    <span class="pl-c1">$</span><span class="pl-c1">0x0</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rdi</span>
+<span class="pl-en">   </span><span class="pl-c1">9</span><span class="pl-en">:   </span><span class="pl-c1">48</span><span class="pl-en"> </span><span class="pl-c1">89</span><span class="pl-en"> 7d f8             </span><span class="pl-k">mov</span><span class="pl-en">    %</span><span class="pl-v">rdi</span><span class="pl-s1">,-</span><span class="pl-c1">0x8</span><span class="pl-en">(%</span><span class="pl-v">rbp</span><span class="pl-en">)</span>
+<span class="pl-en">   d:   7c 0a                   </span><span class="pl-k">jl</span><span class="pl-en">     </span><span class="pl-c1">19</span><span class="pl-en"> &lt;_TF4test9function1FSiSu</span><span class="pl-s1">+</span><span class="pl-c1">0x19</span><span class="pl-en">&gt;</span>
+<span class="pl-en">   f:   </span><span class="pl-c1">48</span><span class="pl-en"> 8b </span><span class="pl-c1">45</span><span class="pl-en"> f8             </span><span class="pl-k">mov</span><span class="pl-en">    </span><span class="pl-s1">-</span><span class="pl-c1">0x8</span><span class="pl-en">(%</span><span class="pl-v">rbp</span><span class="pl-en">)</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rax</span>
+<span class="pl-en">  </span><span class="pl-c1">13</span><span class="pl-en">:   </span><span class="pl-c1">48</span><span class="pl-en"> </span><span class="pl-c1">83</span><span class="pl-en"> c4 </span><span class="pl-c1">08</span><span class="pl-en">             </span><span class="pl-k">add</span>    <span class="pl-c1">$</span><span class="pl-c1">0x8</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rsp</span>
+<span class="pl-en">  </span><span class="pl-c1">17</span><span class="pl-en">:   5d                      </span><span class="pl-k">pop</span><span class="pl-en">    %</span><span class="pl-v">rbp</span>
+<span class="pl-en">  </span><span class="pl-c1">18</span><span class="pl-en">:   c3                      retq</span>
+<span class="pl-en">  </span><span class="pl-c1">19</span><span class="pl-en">:   0f </span><span class="pl-c1">0b</span><span class="pl-en">                   </span><span class="pl-k">ud2</span>
+<span class="pl-en">  </span><span class="pl-c1">1b</span><span class="pl-en">:   0f 1f </span><span class="pl-c1">44</span><span class="pl-en"> </span><span class="pl-c1">00</span><span class="pl-en"> </span><span class="pl-c1">00</span><span class="pl-en">          nopl   </span><span class="pl-c1">0x0</span><span class="pl-en">(%</span><span class="pl-v">rax</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rax</span><span class="pl-s1">,</span><span class="pl-c1">1</span><span class="pl-en">)</span>
+
+<span class="pl-c1">0000000000000020</span><span class="pl-en"> &lt;function2&gt;:</span>
+<span class="pl-en">  </span><span class="pl-c1">20</span><span class="pl-en">:   </span><span class="pl-c1">55</span><span class="pl-en">                      </span><span class="pl-k">push</span><span class="pl-en">   %</span><span class="pl-v">rbp</span>
+<span class="pl-en">  </span><span class="pl-c1">21</span><span class="pl-en">:   </span><span class="pl-c1">48</span><span class="pl-en"> </span><span class="pl-c1">89</span><span class="pl-en"> e5                </span><span class="pl-k">mov</span><span class="pl-en">    %</span><span class="pl-v">rsp</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rbp</span>
+<span class="pl-en">  </span><span class="pl-c1">24</span><span class="pl-en">:   </span><span class="pl-c1">50</span><span class="pl-en">                      </span><span class="pl-k">push</span><span class="pl-en">   %</span><span class="pl-v">rax</span>
+<span class="pl-en">  </span><span class="pl-c1">25</span><span class="pl-en">:   </span><span class="pl-c1">48</span><span class="pl-en"> </span><span class="pl-c1">83</span><span class="pl-en"> ff </span><span class="pl-c1">00</span><span class="pl-en">             </span><span class="pl-k">cmp</span>    <span class="pl-c1">$</span><span class="pl-c1">0x0</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rdi</span>
+<span class="pl-en">  </span><span class="pl-c1">29</span><span class="pl-en">:   </span><span class="pl-c1">48</span><span class="pl-en"> </span><span class="pl-c1">89</span><span class="pl-en"> 7d f8             </span><span class="pl-k">mov</span><span class="pl-en">    %</span><span class="pl-v">rdi</span><span class="pl-s1">,-</span><span class="pl-c1">0x8</span><span class="pl-en">(%</span><span class="pl-v">rbp</span><span class="pl-en">)</span>
+<span class="pl-en">  2d:   7c 0a                   </span><span class="pl-k">jl</span><span class="pl-en">     </span><span class="pl-c1">39</span><span class="pl-en"> &lt;function2</span><span class="pl-s1">+</span><span class="pl-c1">0x19</span><span class="pl-en">&gt;</span>
+<span class="pl-en">  2f:   </span><span class="pl-c1">48</span><span class="pl-en"> 8b </span><span class="pl-c1">45</span><span class="pl-en"> f8             </span><span class="pl-k">mov</span><span class="pl-en">    </span><span class="pl-s1">-</span><span class="pl-c1">0x8</span><span class="pl-en">(%</span><span class="pl-v">rbp</span><span class="pl-en">)</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rax</span>
+<span class="pl-en">  </span><span class="pl-c1">33</span><span class="pl-en">:   </span><span class="pl-c1">48</span><span class="pl-en"> </span><span class="pl-c1">83</span><span class="pl-en"> c4 </span><span class="pl-c1">08</span><span class="pl-en">             </span><span class="pl-k">add</span>    <span class="pl-c1">$</span><span class="pl-c1">0x8</span><span class="pl-s1">,</span><span class="pl-en">%</span><span class="pl-v">rsp</span>
+<span class="pl-en">  </span><span class="pl-c1">37</span><span class="pl-en">:   5d                      </span><span class="pl-k">pop</span><span class="pl-en">    %</span><span class="pl-v">rbp</span>
+<span class="pl-en">  </span><span class="pl-c1">38</span><span class="pl-en">:   c3                      retq</span>
+<span class="pl-en">  </span><span class="pl-c1">39</span><span class="pl-en">:   0f </span><span class="pl-c1">0b</span><span class="pl-en">                   </span><span class="pl-k">ud2</span></pre></div>
+
+<p>With function1's name decoding to:</p>
+
+<div class="highlight highlight-source-shell"><pre>$ swift-demangle _TF4test9function1FSiSu
+_TF4test9function1FSiSu ---<span class="pl-k">&gt;</span> <span class="pl-c1">test</span>.function1 (Swift.Int) -<span class="pl-k">&gt;</span> Swift.UInt</pre></div>
+
+<h2><a id="user-content-defines-and-constants" class="anchor" href="#defines-and-constants" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Defines and constants</h2>
+
+<p>When using <code>#define</code> in .h files remember that C integer values actually have a
+type and this needs to be taken into account when used in Swift. The values are
+not simply substituted in to the code as they are in C. Consider:</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// test.h</span>
+#<span class="pl-k">define</span> <span class="pl-en">ONE</span> <span class="pl-c1">1</span>
+#<span class="pl-k">define</span> <span class="pl-en">TWO</span> <span class="pl-c1">2L</span>
+#<span class="pl-k">define</span> <span class="pl-en">THREE</span> <span class="pl-c1">3LL</span>
+#<span class="pl-k">define</span> <span class="pl-en">FOUR</span> <span class="pl-c1">4U</span>
+#<span class="pl-k">define</span> <span class="pl-en">FIVE</span> <span class="pl-c1">5UL</span>
+#<span class="pl-k">define</span> <span class="pl-en">SIX</span> <span class="pl-c1">6ULL</span></pre></div>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-c">// test.swift</span>
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>ONE<span class="pl-cce">\t</span><span class="pl-pds">"</span></span>, ONE, ONE<span class="pl-k">.</span><span class="pl-k">dynamicType</span>)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>TWO<span class="pl-cce">\t</span><span class="pl-pds">"</span></span>, TWO, TWO<span class="pl-k">.</span><span class="pl-k">dynamicType</span>)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>THREE<span class="pl-cce">\t</span><span class="pl-pds">"</span></span>, THREE, THREE<span class="pl-k">.</span><span class="pl-k">dynamicType</span>)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>FOUR<span class="pl-cce">\t</span><span class="pl-pds">"</span></span>, FOUR, FOUR<span class="pl-k">.</span><span class="pl-k">dynamicType</span>)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>FIVE<span class="pl-cce">\t</span><span class="pl-pds">"</span></span>, FIVE, FIVE<span class="pl-k">.</span><span class="pl-k">dynamicType</span>)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>SIX<span class="pl-cce">\t</span><span class="pl-pds">"</span></span>, SIX, SIX<span class="pl-k">.</span><span class="pl-k">dynamicType</span>)</pre></div>
+
+<div class="highlight highlight-source-shell"><pre>$ swiftc -import-objc-header <span class="pl-c1">test</span>.h <span class="pl-c1">test</span>.swift
+$ ./test
+ONE     1 Int32
+TWO     2 Int
+THREE   3 Int64
+FOUR    4 UInt32
+FIVE    5 UInt
+SIX     6 UInt64</pre></div>
+
+<p>But if <code>test.swift</code> is modified:</p>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">func</span> <span class="pl-en">printInt</span>(a: <span class="pl-c1">Int</span>) {
+    <span class="pl-c1">print</span>(a)
+}
+
+printInt(ONE)
+printInt(TWO)
+printInt(THREE)
+</pre></div>
+
+<div class="highlight highlight-source-shell"><pre>$ swiftc -import-objc-header <span class="pl-c1">test</span>.h <span class="pl-c1">test</span>.swift
+<span class="pl-c1">test</span>.swift:14:10: error: cannot convert value of <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>Int32<span class="pl-pds">'</span></span> to expected argument <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>Int<span class="pl-pds">'</span></span>
+printInt(ONE)
+         ^~~
+<span class="pl-c1">test</span>.swift:16:10: error: cannot convert value of <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>Int64<span class="pl-pds">'</span></span> to expected argument <span class="pl-c1">type</span> <span class="pl-s"><span class="pl-pds">'</span>Int<span class="pl-pds">'</span></span>
+printInt(THREE)
+         ^~~~~</pre></div>
+
+<p><code>test.swift</code> would need to be modified as follows:</p>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">func</span> <span class="pl-en">printInt</span>(a: <span class="pl-c1">Int</span>) {
+    <span class="pl-c1">print</span>(a)
+}
+
+printInt(<span class="pl-c1">Int</span>(ONE))
+printInt(TWO)
+printInt(<span class="pl-c1">Int</span>(THREE))</pre></div>
+
+<div class="highlight highlight-source-shell"><pre>$ swiftc -import-objc-header <span class="pl-c1">test</span>.h <span class="pl-c1">test</span>.swift
+$ ./test
+1
+2
+3</pre></div>
+
+<p>Which is something to remember when using constants in header files.</p>
+
+<h2><a id="user-content-structs" class="anchor" href="#structs" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Structs</h2>
+
+<p>A struct can be defined in a .h file and then easily used in Swift. The struct
+can be addressed just be its name without <code>struct</code> eg:</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// test.h</span>
+<span class="pl-k">struct</span> register_set {
+        <span class="pl-k">unsigned</span> <span class="pl-k">long</span> rax;
+        <span class="pl-k">unsigned</span> <span class="pl-k">long</span> rbx;
+        <span class="pl-k">unsigned</span> <span class="pl-k">long</span> rcx;
+        <span class="pl-k">unsigned</span> <span class="pl-k">long</span> rdx;
+};
+
+<span class="pl-k">static</span> <span class="pl-k">inline</span> <span class="pl-k">const</span> <span class="pl-k">struct</span> register_set * _Nonnull
+<span class="pl-en">register_set_addr</span>(<span class="pl-k">struct</span> register_set * _Nonnull set)
+{
+        <span class="pl-k">return</span> set;
+}</pre></div>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-c">// test.swift</span>
+<span class="pl-k">var</span> registers <span class="pl-k">=</span> register_set()
+
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>rax =<span class="pl-pds">"</span></span>, registers<span class="pl-k">.</span>rax)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>rbx =<span class="pl-pds">"</span></span>, registers<span class="pl-k">.</span>rbx)</pre></div>
+
+<div class="highlight highlight-source-shell"><pre>$ ./test
+rax = 0
+rbx = 0</pre></div>
+
+<p>This allows easy initialisation of empty structs where all of the elements are
+set to zero. If data in a fixed memory table (eg ACPI tables) needs to be
+parsed and only the address is known then this is also easy to accomplish using
+the <code>pointee</code> property:</p>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">var</span> registers <span class="pl-k">=</span> register_set()
+registers<span class="pl-k">.</span>rax <span class="pl-k">=</span> <span class="pl-c1">123</span>
+registers<span class="pl-k">.</span>rbx <span class="pl-k">=</span> <span class="pl-c1">456</span>
+
+<span class="pl-k">let</span> addr <span class="pl-k">=</span> register_set_addr(<span class="pl-k">&amp;</span>registers)
+<span class="pl-k">let</span> r <span class="pl-k">=</span> <span class="pl-c1">UnsafePointer</span><span class="pl-k">&lt;</span>register_set<span class="pl-k">&gt;</span>(addr)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>addr = <span class="pl-pds">"</span></span>, addr, addr<span class="pl-k">.</span><span class="pl-k">dynamicType</span>)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>rax =<span class="pl-pds">"</span></span>, r<span class="pl-k">.</span>pointee<span class="pl-k">.</span>rax)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>rbx =<span class="pl-pds">"</span></span>, r<span class="pl-k">.</span>pointee<span class="pl-k">.</span>rbx)</pre></div>
+
+<div class="highlight highlight-source-shell"><pre>./test
+addr =  0x000000010136c210 UnsafePointer<span class="pl-k">&lt;</span>register_set<span class="pl-k">&gt;</span>
+rax = 123
+rbx = 456</pre></div>
+
+<p>[Note: the use of <code>_Nonnull</code> in test.h. This makes the return type of
+<code>register_set_addr()</code> be an <code>UnsafePointer&lt;register_set&gt;</code> instead of an
+<code>Optional&lt;UnsafePointer&lt;register_set&gt;&gt;</code>. Of course you need to ensure that
+the address passed to <code>register_set_addr()</code> is non-NULL]</p>
+
+<p>There are two advantages of C structs over Swift struct:</p>
+
+<ol>
+<li>Packed structures</li>
+</ol>
+
+<p>If the data has a pre defined format that you dont control and the struct
+requires packing using <code>__attribute__((packed))</code> then it can only be defined
+in a .h file as Swift does not currently have a method of setting struct
+attributes. Due to alignment padding it will add in extra space. Compare:</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// test.h</span>
+
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>stdint.h<span class="pl-pds">&gt;</span></span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>stddef.h<span class="pl-pds">&gt;</span></span>
+
+<span class="pl-c">// Descriptor table info used for both GDT and IDT</span>
+<span class="pl-k">struct</span> dt_info {
+        <span class="pl-c1">uint16_t</span> limit;
+        <span class="pl-c1">uint64_t</span> address;
+} __attribute__((packed));
+
+
+<span class="pl-k">static</span> <span class="pl-k">inline</span> <span class="pl-c1">ptrdiff_t</span>
+<span class="pl-en">offset_of</span>(<span class="pl-k">void</span> * _Nonnull base, <span class="pl-k">void</span> * _Nonnull ptr)
+{
+        <span class="pl-k">return</span> ptr - base;
+}</pre></div>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">struct</span> DTInfo {
+    <span class="pl-k">var</span> limit: <span class="pl-c1">UInt16</span>
+    <span class="pl-k">var</span> address: <span class="pl-c1">UInt64</span>
+}
+
+<span class="pl-k">var</span> info1 <span class="pl-k">=</span> DTInfo(limit: <span class="pl-c1">31</span>, address: 0xabcd)
+<span class="pl-k">let</span> limitOffset1 <span class="pl-k">=</span> offset_of(<span class="pl-k">&amp;</span>info1, <span class="pl-k">&amp;</span>info1<span class="pl-k">.</span>limit)
+<span class="pl-k">let</span> addrOffset1 <span class="pl-k">=</span> offset_of(<span class="pl-k">&amp;</span>info1, <span class="pl-k">&amp;</span>info1<span class="pl-k">.</span>address)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>Swift: limitOffset:<span class="pl-pds">"</span></span>, limitOffset1, <span class="pl-s"><span class="pl-pds">"</span>addrOffset:<span class="pl-pds">"</span></span>, addrOffset1)
+
+<span class="pl-k">var</span> info2 <span class="pl-k">=</span> dt_info(limit: <span class="pl-c1">31</span>, address: 0xabcd)
+<span class="pl-k">let</span> limitOffset2 <span class="pl-k">=</span> offset_of(<span class="pl-k">&amp;</span>info2, <span class="pl-k">&amp;</span>info2<span class="pl-k">.</span>limit)
+<span class="pl-k">let</span> addrOffset2 <span class="pl-k">=</span> offset_of(<span class="pl-k">&amp;</span>info2, <span class="pl-k">&amp;</span>info2<span class="pl-k">.</span>address)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>C: limitOffset:<span class="pl-pds">"</span></span>, limitOffset2, <span class="pl-s"><span class="pl-pds">"</span>addrOffset:<span class="pl-pds">"</span></span>, addrOffset2)</pre></div>
+
+<p>[Note: due to the lack of an offsetOf() function a C function is used to
+calculate the offset using some pointer arithmetic]</p>
+
+<div class="highlight highlight-source-shell"><pre>Swift: limitOffset: 0 addrOffset: 8
+C: limitOffset: 0 addrOffset: 2</pre></div>
+
+<p>As we can see the Swift defined <code>SomeTable</code> aligns each field to its natural
+size so the <code>data</code> field is placed on the next UInt64 boundary. C would
+naturally do the same but the behaviour is overriden using the
+<code>__attribute__((packed))</code> option.</p>
+
+<ol>
+<li>Fixed Arrays</li>
+</ol>
+
+<p>Swift does not currently support fixed size arrays and they must be represented
+as a tuple. Although this does not stop you from defining the struct in Swift,
+it can make the code quite unreadable if the array has a large number of
+elements, eg:</p>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">struct</span> Foo {
+    <span class="pl-k">var</span> sz: <span class="pl-c1">UInt8</span>[<span class="pl-c1">8</span>]
+}</pre></div>
+
+<p>gives the error:</p>
+
+<div class="highlight highlight-source-shell"><pre>$ swiftc -import-objc-header <span class="pl-c1">test</span>.h <span class="pl-c1">test</span>.swift
+<span class="pl-c1">test</span>.swift:1:18: error: array types are now written with the brackets around the element <span class="pl-c1">type</span>
+    var sz: UInt8[8]
+                 ^~</pre></div>
+
+<p>However:</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-k">struct</span> foo {
+        <span class="pl-k">unsigned</span> <span class="pl-k">char</span> x[<span class="pl-c1">8</span>];
+};</pre></div>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">let</span> y <span class="pl-k">=</span> foo()
+<span class="pl-c1">print</span>(y)
+<span class="pl-k">let</span> x <span class="pl-k">=</span> foo(x: (<span class="pl-c1">1</span>,<span class="pl-c1">2</span>,<span class="pl-c1">3</span>,<span class="pl-c1">4</span>,<span class="pl-c1">5</span>,<span class="pl-c1">6</span>,<span class="pl-c1">7</span>,<span class="pl-c1">8</span>))
+<span class="pl-c1">print</span>(x)</pre></div>
+
+<p>Works and gives the following output, although x needs to be initialised using
+a tuple:</p>
+
+<div class="highlight highlight-source-shell"><pre>foo(x: (0, 0, 0, 0, 0, 0, 0, 0))
+foo(x: (1, 2, 3, 4, 5, 6, 7, 8))</pre></div>
+
+<h2><a id="user-content-arrays" class="anchor" href="#arrays" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Arrays</h2>
+
+<p>Because fixed size arrays are seen as tuples by Swift, to treat them as
+indexable arrays they need to be accessed using <code>UnsafeBufferPointer</code> and
+<code>UnsafeMutableBufferPointer</code>.</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// test.h</span>
+#<span class="pl-k">define</span> <span class="pl-en">ARRAY_SIZE</span>  <span class="pl-c1">8L</span>
+<span class="pl-k">extern</span> <span class="pl-k">unsigned</span> <span class="pl-k">char</span> test_array[];
+<span class="pl-k">static</span> <span class="pl-k">inline</span> <span class="pl-k">void</span> *<span class="pl-en">test_array_addr</span>() { <span class="pl-k">return</span> &amp;test_array; };
+<span class="pl-k">void</span> <span class="pl-en">print_array</span>();</pre></div>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// array.c</span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>stdio.h<span class="pl-pds">&gt;</span></span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">"</span>test.h<span class="pl-pds">"</span></span>
+
+<span class="pl-k">unsigned</span> <span class="pl-k">char</span> test_array[ARRAY_SIZE] = { <span class="pl-c1">0</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span> };
+
+<span class="pl-k">void</span>
+<span class="pl-en">print_array</span>()
+{
+        <span class="pl-k">for</span> (<span class="pl-k">int</span> i = <span class="pl-c1">0</span>; i &lt; ARRAY_SIZE; i++) {
+                <span class="pl-c1">printf</span>(<span class="pl-s"><span class="pl-pds">"</span><span class="pl-c1">%d</span> <span class="pl-pds">"</span></span>, test_array[i]);
+        }
+        <span class="pl-c1">puts</span>(<span class="pl-s"><span class="pl-pds">"</span><span class="pl-pds">"</span></span>);
+}</pre></div>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-c">// test.swift</span>
+<span class="pl-k">let</span> arrayPtr <span class="pl-k">=</span> <span class="pl-c1">UnsafeMutablePointer</span><span class="pl-k">&lt;</span><span class="pl-c1">UInt8</span><span class="pl-k">&gt;</span>(test_array_addr())
+<span class="pl-k">let</span> testArray <span class="pl-k">=</span> <span class="pl-c1">UnsafeMutableBufferPointer</span>(start: arrayPtr, count: ARRAY_SIZE)
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>testArray:<span class="pl-pds">"</span></span>, testArray)
+testArray<span class="pl-k">.</span>forEach({ <span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span><span class="pl-pse">\(</span><span class="pl-s1">$<span class="pl-c1">0</span></span><span class="pl-pse">)</span> <span class="pl-pds">"</span></span>, terminator: <span class="pl-s"><span class="pl-pds">"</span><span class="pl-pds">"</span></span>) })
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span><span class="pl-pds">"</span></span>)
+
+<span class="pl-k">for</span> x <span class="pl-k">in</span> <span class="pl-c1">4</span><span class="pl-k">..&lt;</span>ARRAY_SIZE {
+    testArray[x] <span class="pl-k">=</span> <span class="pl-c1">UInt8</span>(x)
+}
+print_array()</pre></div>
+
+<div class="highlight highlight-source-shell"><pre>$ clang -c array.c
+$ swiftc -Xlinker array.o  -import-objc-header <span class="pl-c1">test</span>.h -emit-executable <span class="pl-c1">test</span>.swift
+$ ./test
+testArray: UnsafeMutableBufferPointer(start: 0x000000010eb7d190, count: 8)
+0 1 2 3 0 0 0 0
+0 1 2 3 4 5 6 7</pre></div>
+
+<h2><a id="user-content-staticstring" class="anchor" href="#staticstring" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>StaticString</h2>
+
+<p>When passing strings to C especially if they are to be printed by a simple
+low level text only console driver it can be useful to make use of
+<code>StaticString</code>. It has a few advantages over <code>String</code> when it can be used:</p>
+
+<ol>
+<li><p>It has an <code>isASCII</code> property which can be useful to <code>assert()</code> on. This
+means that a console driver that may not understand unicode knows it wont be
+getting any unicode characters.</p></li>
+<li><p>The <code>utf8start</code> property returns a simple pointer to the string which can
+be passed around, which is a lot simpler to use than <code>String</code>.</p></li>
+</ol>
+
+<p><code>StaticString</code> cannot be used in all circumstances but for <code>printf</code> style
+functions it is often used for error or debug messages as the format string
+is usually a constant string.</p>
+
+
+<table style="border-collapse: collapse; border: 0px;">
+    <tr style="border: none">
+        <td style="border: none; text-align: center; width: 40%"><a href="initialisation.html">&lt; Prev</a></td>
+        <td style="border: none; text-align: center; width: 20%"><a href="index.html">Top</a></td>
+        <td style="border: none; text-align: center; width: 40%"><a href="other-notes.html">Next &gt;</a></td>
+    </tr>
+</table>
+
+</article>
+</div>
+</body>

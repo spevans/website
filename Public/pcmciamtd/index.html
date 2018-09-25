@@ -1,0 +1,139 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <title>Linux MTD driver for PCMCIA Flash cards</title>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  </head>
+  
+  <body>
+    <h1>Linux MTD driver for PCMCIA Flash cards</h1>
+    This driver allows linear mapped Flash, RAM and ROM based PCMCIA cards to be used under Linux
+    as MTD devices. It only works with 8 & 16 bit cards (ISA) and not 32bit Cardbus cards.
+    <p>
+      The driver simply maps out the address space of the card and then tries each of the MTD
+      chip probe routines in sequence until it finds a device it understands. It is a
+      replacement for the <code>memory_cs</code> module from the pcmcia-cs package but uses the
+      chip drivers from the MTD subsystem, and presents an MTD device rather than block and
+      char devices. A flash filesystem such as jffs2 can then be used on top of it or
+      the <code>mtdblock</code> and <code>mtdchar</code> modules can be used to give more
+      direct access.
+    <p>
+      <b>NOTE</b> Currently this driver is very alpha software, so please use with caution!
+
+    <h3>Setup</h3>
+    Checkout the latest MTD CVS source tree, and patch it into your kernel source.
+    Then apply the patch below.<br>
+    The MTD CVS tree instructions can be found at <a href="http://linux-mtd.infradead.org">linux-mtd.infradead.org</a>
+    <p>
+      Then in the Linux kernel configuration under the MTD menu, select 'Mapping drivers for 
+      chip access' and select 'PCMCIA MTD driver' and select the chip drivers as required in 
+      the 'RAM/ROM/Flash chip drivers' section.
+    <p>
+      <b>NOTE</b> The PCMCIA MTD driver has only been tested as a module, so it best to compile it
+      as so.
+    <p>
+      Rebuild and install the modules etc then edit your <code>/etc/pcmcia/config</code> file
+      to add the following:<br>
+      <code>
+	device "pcmciamtd"<br>
+	class "memory" module "pcmciamtd"<br>
+      </code>
+    <p>
+      And for each card type you have bind it to <code>pcmciamtd</code> (by default they are
+      bound to <code>memory_cs</code>) eg:
+<pre>
+#
+# Memory cards
+#
+card "Anonymous Memory"
+  anonymous
+  bind "pcmciamtd"
+
+card "Memory Card"
+  function memory_card
+  bind "pcmciamtd"
+
+card "IBM 2MB SRAM"
+  version "IBM", "2MB SRAM"
+  bind "pcmciamtd"
+</pre>
+    <p>
+      and then restart cardmgr.
+    <p>
+      <b>Note</b>
+      If the module is bound to the Anonymous memory then it may be used for any card that
+      can not be identified, which may not always be desirable.
+      <p>
+    <h3>Module Options</h3>
+    If the card has a CIS then this will be read and used to get the parameters for the card.
+    However, a lot of memory cards do not have a CIS so options can be used to override the
+    settings for the card.
+    <p>
+    <table border="1">
+	<tr><td>buswidth</td><td>Set buswidth (1 = 8 bit, 2 = 16 bit, default = 2)</td></tr>
+	<tr><td>mem_speed</td><td>Set memory access speed in ns</td></tr>
+	<tr><td>force_size</td><td>Force size of card in MB (1-64 default = 64)</td></tr>
+	<tr><td>vpp</td><td>Set Vpp in 1/10ths eg 33 = 3.3V 120 = 12V (Dangerous)</td></tr>
+	<tr><td>setvpp</td><td>Set Vpp (0=Never, 1=On writes, 2=Always on, default=0)</td></tr>
+	<tr><td>mem_type</td><td>Set Memory type (0 = Flash, 1 = RAM, 2 = ROM, default = 0)</td></tr>
+	<tr><td>debug</td><td>Debug level 0 - 5 (default = MTD debug)</td></tr>
+    </table>
+    <p>
+      <code>buswidth</code> sets the memory window into 8 or 16bit mode. By default it uses
+      16bit mode, however the correct usage is dependant on the card's hardware.
+    <p>
+      <code>memspeed</code> sets the access speed of the memory in nanoseconds. This option
+      should not be needed unless the card doesnt work with the default.
+    <p>
+      <code>force_size</code> sets the size of the memory area to search if it cannot be 
+      determined from the CIS. The probe routine looks for flash chips in this area and 
+      may find a smaller flash memory area than was set with <code>force_size.</code>
+    <p>
+      <code>vpp</code> set the Vpp used to power the card optionally for
+      programming the card during write and erase. This is very card specific and some
+      cards can require different Vpp voltages. This can be apparent if the card
+      can be read, but not be written or erased. Currently the only way to find out the required
+      voltages is to enable debugging in the probe routines and see the model numbers of the
+      chips that are found. The voltages are set in 1/10ths of a volt so to set Vpp to 5.0
+      volts, use <code>vpp=50</code>. <b>This option can damage hardware if voltages are
+      incorrectly set!</b>
+    <p>
+      <code>setvpp</code> enables setting of Vpp. Not all flash chips require Vpp whilst others
+      do. <code>setvpp</code> allows three modes: 0 sets the Vpp to 0 volts permanently, 1 enables
+      the <code>set_vpp()</code>function to be called everytime the chip driver wants to write to
+      the chip to set the Vpp on and off and 2 sets the Vpp on permanently. Enabling the
+      <code>set_vpp()</code> can slow down writes quite considerably as every write requires a PCMCIA
+      subsystem call to set the Vpp on and off. However not all flash chips require or want the Vpp
+      to be enabled permanently.
+    <p>
+      <code>mem_type</code> sets the probe routines to call. 0 will use the <i>jedec_probe</i>
+      and <i>cfi_probe</i>. This probe can fail if no supported flash chips are found. Using
+      1 or 2 will always succed as the RAM and ROM probe routines dont actually probe and just
+      return true.
+    <p>
+      <code>debug</code> sets the debug level. This is only compiled in if CONFIG_MTD_DEBUG is
+      set. 0 is quiet, 5 is very noisy.
+    <p>
+      If the card does not appear to work, then try using the <code>memory_cs</code> module.
+      If this works then please report this as a bug (include as much information as possible
+      about the hardware).
+    <p>
+      Patch against 2.4.19<br>
+      <a href="patch-2.4.19-pcmciamtd.diff">patch-2.4.19-pcmciamtd.diff</a>
+    <p>
+      This driver is now in kerenel 2.5.44. These patches fix removal of the card and cleaning up on exit. They also handle the card being removed whilst in use (and just returning fail to the chip drivers).<br>
+    <p>
+      Patch against 2.4.19<br>
+      <a href="patch-2.4.19-pcmciamtd-2.diff">patch-2.4.19-pcmciamtd-2.diff</a><br>
+      Patch against 2.5.44<br>
+      <a href="patch-2.5.44-pcmciamtd.diff">patch-2.5.44-pcmciamtd.diff</a><br>
+	
+    <hr>
+    <address><a href="mailto:spse@secret.org.uk">Simon Evans</a></address>
+<!-- Created: Sat Jun  1 17:33:13 BST 2002 -->
+<!-- hhmts start -->
+Last modified: Sun Oct 27 17:18:16 GMT 2002
+<!-- hhmts end -->
+  </body>
+</html>

@@ -1,0 +1,9 @@
+ Documentation/Configure.help |   15 
+ drivers/usb/Config.in        |    1 
+ drivers/usb/Makefile         |    3 
+ drivers/usb/ibmcam.c         |   23 -
+ drivers/usb/konicawc.c       |  936 +++++++++++++++++++++++++++++++++++++++++++
+ drivers/usb/ultracam.c       |   18 
+ drivers/usb/usbvideo.c       |  130 +++--
+ drivers/usb/usbvideo.h       |   28 -
+ 8 files changed, 1075 insertions(+), 79 deletions(-)

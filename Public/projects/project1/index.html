@@ -1,0 +1,106 @@
+
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maximum-scale=1" media="(device-height: 568px)">
+        <link rel="stylesheet" type="text/css" href="github.css">
+    </head>
+    <body>
+<div id="readme" class="readme blob instapaper_body">
+<article class="markdown-body entry-content" itemprop="text">
+
+<table style="border-collapse: collapse; border: 0px;">
+    <tr style="border: none">
+        <td style="border: none; text-align: center; width: 40%"></td>
+        <td style="border: none; text-align: center; width: 20%"><a href="index.html">Top</a></td>
+        <td style="border: none; text-align: center; width: 40%"><a href="development.html">Next &gt;</a></td>
+    </tr>
+</table>
+
+<h1><a id="user-content-overview" class="anchor" href="#overview" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Overview</h1>
+
+<p>project1 - writing a simple bare metal kernel in Swift</p>
+
+<p>A project to write a kernel in Swift with that can boot on a Mac or PC.
+The main aim is to get a simple kernel booting up with a CLI with full
+concurrency/thread support on multiple cores.</p>
+
+<p><a href="https://github.com/spevans/swift-project1">project1 on github</a></p>
+
+<p>Current status:</p>
+
+<ul>
+<li>Boots up (Under QEMU, Bochs or VMWare)</li>
+<li>Scans ACPI/SMBIOS tables</li>
+<li>Installs interrupts and exception/fault handlers</li>
+<li>Sets up paging</li>
+<li>Scans PCI bus</li>
+<li>Initialises timer and keyboard</li>
+<li>Initialises PIC, PIT and PS/2 keyboard controller</li>
+<li>Runs two simple tasks, one printing 'A' and the other printing 'B' in a loop
+with a simple stack context switch</li>
+</ul>
+
+<p>The next step is to get multi processor support working</p>
+
+<p>The main aspects investigated were:</p>
+
+<h2><a id="user-content-development-environment-and-compiler" class="anchor" href="#development-environment-and-compiler" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a><a href="development.html">Development environment and compiler</a></h2>
+
+<ul>
+<li>Red zone</li>
+<li>Using the compiler</li>
+<li>Libraries</li>
+<li>C &amp; assembly required to get binary starting up</li>
+<li>Stdlib</li>
+<li>Swift modules</li>
+<li>Why is there so much C in the code?</li>
+<li>Will it build on OSX?</li>
+</ul>
+
+<h2><a id="user-content-initialisation" class="anchor" href="#initialisation" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a><a href="initialisation.html">Initialisation</a></h2>
+
+<ul>
+<li>From boot to swift startup()</li>
+<li>globalinit*()</li>
+<li>malloc() and free()</li>
+<li>Thread Local Storage (TLS)</li>
+<li>Streaming SIMD Extensions (SSE)</li>
+<li>Reading data tables in swift</li>
+</ul>
+
+<h2><a id="user-content-working-with-c" class="anchor" href="#working-with-c" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a><a href="working-with-c.html">Working with C</a></h2>
+
+<ul>
+<li>Swift calling convention</li>
+<li>Pointers</li>
+<li>Swift function names</li>
+<li>Defines and constants</li>
+<li>Structs</li>
+<li>Arrays</li>
+<li>StaticString</li>
+</ul>
+
+<h2><a id="user-content-other-notes" class="anchor" href="#other-notes" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a><a href="other-notes.html">Other Notes</a></h2>
+
+<ul>
+<li>Testing environment (boches, qemu etc)</li>
+<li>What to do differently next time</li>
+<li>Future directions</li>
+</ul>
+
+<h2><a id="user-content-useful-links" class="anchor" href="#useful-links" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a><a href="useful-links.html">Useful links</a></h2>
+
+
+<table style="border-collapse: collapse; border: 0px;">
+    <tr style="border: none">
+        <td style="border: none; text-align: center; width: 40%"></td>
+        <td style="border: none; text-align: center; width: 20%"><a href="index.html">Top</a></td>
+        <td style="border: none; text-align: center; width: 40%"><a href="development.html">Next &gt;</a></td>
+    </tr>
+</table>
+
+</article>
+</div>
+</body>

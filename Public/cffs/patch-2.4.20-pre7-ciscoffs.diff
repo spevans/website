@@ -1,0 +1,440 @@
+diff -Nru a/fs/Config.in b/fs/Config.in
+--- a/fs/Config.in	Tue Sep 17 01:13:47 2002
++++ b/fs/Config.in	Tue Sep 17 01:13:47 2002
+@@ -46,6 +46,7 @@
+ if [ "$CONFIG_JFFS2_FS" = "y" -o "$CONFIG_JFFS2_FS" = "m" ] ; then
+    int 'JFFS2 debugging verbosity (0 = quiet, 2 = noisy)' CONFIG_JFFS2_FS_DEBUG 0
+ fi
++tristate 'Cisco Flash File System support (read only)' CONFIG_CISCOFFS_FS
+ tristate 'Compressed ROM file system support' CONFIG_CRAMFS
+ bool 'Virtual memory file system support (former shm fs)' CONFIG_TMPFS
+ define_bool CONFIG_RAMFS y
+diff -Nru a/fs/Makefile b/fs/Makefile
+--- a/fs/Makefile	Tue Sep 17 01:13:47 2002
++++ b/fs/Makefile	Tue Sep 17 01:13:47 2002
+@@ -56,6 +56,7 @@
+ subdir-$(CONFIG_EFS_FS)		+= efs
+ subdir-$(CONFIG_JFFS_FS)	+= jffs
+ subdir-$(CONFIG_JFFS2_FS)	+= jffs2
++subdir-$(CONFIG_CISCOFFS_FS)	+= ciscoffs
+ subdir-$(CONFIG_AFFS_FS)	+= affs
+ subdir-$(CONFIG_ROMFS_FS)	+= romfs
+ subdir-$(CONFIG_QNX4FS_FS)	+= qnx4
+diff -Nru a/fs/ciscoffs/Makefile b/fs/ciscoffs/Makefile
+--- /dev/null	Wed Dec 31 16:00:00 1969
++++ b/fs/ciscoffs/Makefile	Tue Sep 17 01:13:47 2002
+@@ -0,0 +1,18 @@
++#
++# Makefile for the linux Cisco Flash FileSystem routines.
++#
++# $Id: Makefile,v 1.1 2002/05/21 13:50:35 spse Exp $
++#
++
++
++
++O_TARGET := ciscoffs.o
++
++obj-y  := inode.o
++obj-m  := $(O_TARGET)
++
++include $(TOPDIR)/Rules.make
++
++
++#ciscoffs.o: inode.c
++#	gcc -Wall -O2 -DMODULE -D__KERNEL__ -DLINUX -c inode.c -I/home/spse/src/linux-mtd/include -o ciscoffs.o
+diff -Nru a/fs/ciscoffs/inode.c b/fs/ciscoffs/inode.c
+--- /dev/null	Wed Dec 31 16:00:00 1969
++++ b/fs/ciscoffs/inode.c	Tue Sep 17 01:13:47 2002
+@@ -0,0 +1,392 @@
++
++/*
++ * $Id: inode.c,v 1.3 2002/05/21 15:54:42 spse Exp $
++ */
++
++
++#include <linux/module.h>
++#include <linux/types.h>
++#include <linux/errno.h>
++#include <linux/fs.h>
++#include <linux/init.h>
++#include <linux/locks.h>
++#include <linux/modversions.h>
++#include <linux/mtd/compatmac.h>
++#include <linux/mtd/mtd.h>                                             
++
++
++#ifdef CONFIG_MTD_DEBUG
++static int debug = CONFIG_MTD_DEBUG_VERBOSE;
++MODULE_PARM(debug, "i");
++MODULE_PARM_DESC(debug, "Set Debug Level 0=quiet, 5=noisy");
++#undef DEBUG
++#define DEBUG(n, format, arg...) \
++	if (n <= debug) {	 \
++		printk(KERN_DEBUG __FILE__ ":%s(): " format "\n", __FUNCTION__ , ## arg); \
++	}
++
++#else
++#undef DEBUG
++#define DEBUG(n, arg...)
++static const int debug = 0;
++#endif
++
++
++#define err(format, arg...) printk(KERN_ERR __FILE__ ": " format "\n" , ## arg)
++#define info(format, arg...) printk(KERN_INFO __FILE__ ": " format "\n" , ## arg)
++#define warn(format, arg...) printk(KERN_WARNING __FILE__ ": " format "\n" , ## arg)
++
++
++static void ciscoffs_read_inode(struct inode *i);
++static int ciscoffs_statfs(struct super_block *sb, struct statfs *buf);
++static int ciscoffs_readdir(struct file *filp, void *dirent, filldir_t filldir);
++static int ciscoffs_readpage(struct file *file, struct page *page);
++static struct dentry *ciscoffs_lookup(struct inode *dir, struct dentry *dentry);
++
++#define CISCO_FH_EXT_MAGIC 0x07158805
++#define CISCO_FH_MAGIC 0xBAD00B1E
++
++#define FLAG_DELETED   1
++#define FLAG_HASDATE   2
++
++#define IS_DELETED(x)  (~x & FLAG_DELETED)
++#define HAS_DATE(x)    (~x & FLAG_HASDATE)	
++
++typedef struct {
++	u32	magic;		/* 0xBAD00B1E */
++	u32	length;		/* file length in bytes */
++	u16	chksum;		/* 16bit chksum */
++	u16	flags;		/* Deleted, valid date */
++	u32	date;		/* Unix date format */
++	char	name[48];	/* filename */
++} cb_filehdr;
++
++
++
++
++static struct super_operations ciscoffs_ops = {
++	.read_inode	= ciscoffs_read_inode,
++	.statfs		= ciscoffs_statfs,
++};
++
++static struct file_operations ciscoffs_dir_ops = {
++	.read		= generic_read_dir,
++	.readdir	= ciscoffs_readdir,
++};
++
++static struct inode_operations ciscoffs_dir_inode_ops = {
++	.lookup		= ciscoffs_lookup,
++};
++
++static struct address_space_operations ciscoffs_aops = {
++	.readpage	= ciscoffs_readpage,
++};
++
++/* Headers are on 4 byte boundries */
++#define NEXT_HEADER(x)  (((x) + 3) & ~3)
++
++
++/* Called by the VFS at mount time to initialize the whole file system.  */
++static struct super_block *ciscoffs_read_super(struct super_block *sb,
++					       void *data, int silent)
++{		
++	kdev_t dev = sb->s_dev;
++	uint32_t magic;
++	int magiclen = 0;
++	struct mtd_info *mtd;
++
++	DEBUG(1, "Trying to mount device %s.", kdevname(dev));
++	if (MAJOR(dev)!=MTD_BLOCK_MAJOR) {
++		err("Trying to mount non-mtd device.");
++		return 0;
++	}
++
++	/* Get the device */
++	DEBUG(1, "getting mtd device");
++	mtd = get_mtd_device(NULL, MINOR(dev));
++	DEBUG(1, "done, mtd = %p", mtd);
++	if(!mtd) {
++		err("Cant get MTD device major = %d minor = %d", MAJOR(dev), MINOR(dev));
++		goto mount_err;
++	}
++
++	/* Read the magic */
++	if(!mtd->read)
++		goto mount_err;
++	DEBUG(1, "reading magic");
++	if((mtd->read(mtd, 0, 4, &magiclen, (char *)&magic) != 0) || magiclen != 4) {
++		warn("cant read magic");
++		goto mount_err;
++	}
++	DEBUG(1, "magic read");
++	magic = ntohl(magic);
++	if(magic != CISCO_FH_MAGIC) {
++		err("Bad magic: %0X", magic);
++		goto mount_err;
++	}
++		
++	DEBUG(1, "Found magic: %08X", magic);
++	sb->s_blocksize = 1024;
++	sb->s_blocksize_bits = 10;
++	sb->u.generic_sbp = mtd;
++	sb->s_magic = magic;
++	sb->s_flags |= MS_RDONLY;
++	sb->s_op = &ciscoffs_ops;
++	DEBUG(1, "Getting root dentry");
++	sb->s_root = d_alloc_root(iget(sb, 0xfffffff0));
++	return sb;
++
++ mount_err:
++	DEBUG(1, "mount error");
++	if(mtd)
++		put_mtd_device(mtd);
++	MOD_DEC_USE_COUNT;
++	warn("Failed to mount device %s.", kdevname(dev));
++	return 0;
++
++}
++
++
++static int ciscoffs_readpage(struct file *file, struct page *page)
++{
++	unsigned long offset, avail, readlen;
++	void *buf;
++	struct inode *inode = page->mapping->host;
++	struct mtd_info *mtd = inode->i_sb->u.generic_sbp;   
++	int err = -EIO;
++
++	DEBUG(1, "inode = %8.8lX, page offset = %8.8lX",
++	      inode->i_ino, page->index);
++  
++	page_cache_get(page);
++	buf = kmap(page);
++	if (!buf)
++		goto err_out;
++  
++	offset = page->index << PAGE_CACHE_SHIFT;
++	if (offset < inode->i_size) {
++		int len;
++		avail = inode->i_size-offset;
++		readlen = min_t(unsigned long, avail, PAGE_SIZE);
++		offset += inode->i_ino + sizeof(cb_filehdr);
++		DEBUG(2, "offset = %ld readlen = %ld", offset, readlen);
++
++		err = mtd->read(mtd, offset, readlen, &len, buf);
++		if(!err) {
++			if (readlen < PAGE_SIZE) {
++				memset(buf + readlen,0,PAGE_SIZE-readlen);
++			}
++			SetPageUptodate(page);
++		} else {
++			memset(buf, 0, PAGE_SIZE);
++			SetPageError(page);
++		}
++	}
++	DEBUG(2, "err = %d", err);
++	flush_dcache_page(page);
++	unlock_page(page);
++	kunmap(page);
++ err_out:
++	page_cache_release(page);
++	return err; 
++}
++
++
++static void ciscoffs_read_inode(struct inode *i)
++{
++	struct mtd_info *mtd = i->i_sb->u.generic_sbp; 
++	cb_filehdr fh;
++	int hdrlen;
++	DEBUG(1, "Inode number wanted: %8.8lX", i->i_ino);
++
++	switch(i->i_ino) {
++
++	case 0xfffffff0:
++		/* Fake dir */
++		i->i_nlink = 1;
++		i->i_size = 16;
++		i->i_mtime = i->i_atime = i->i_ctime = 0;
++		i->i_uid = i->i_gid = 0; 
++		i->i_op = &ciscoffs_dir_inode_ops;
++		i->i_fop = &ciscoffs_dir_ops;
++		i->i_mode = S_IFDIR | S_IRUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
++		break;
++
++	default:
++		if((mtd->read(mtd, i->i_ino, sizeof(cb_filehdr), &hdrlen, (char *)&fh) != 0) 
++		   || hdrlen != sizeof(cb_filehdr)) {
++			warn("cant read magic");
++		}
++		if(ntohl(fh.magic) != CISCO_FH_MAGIC) {
++			warn("bad inode %ld", i->i_ino);
++		}
++		i->i_nlink = 1;
++		i->i_size = ntohl(fh.length);
++		i->i_mtime = i->i_atime = i->i_ctime = ntohl(fh.date);
++		i->i_uid = i->i_gid = 0; 
++		i->i_fop = &generic_ro_fops;
++		i->i_data.a_ops = &ciscoffs_aops;
++		i->i_mode = S_IFREG | S_IRUSR | S_IRGRP | S_IROTH;   
++		DEBUG(1, "found inode %ld", i->i_ino);
++		break;
++    
++	}
++}
++
++
++static int ciscoffs_statfs(struct super_block *sb, struct statfs *buf)
++{
++	struct mtd_info *mtd = sb->u.generic_sbp;
++
++	buf->f_type = CISCO_FH_MAGIC;
++	buf->f_bsize = sb->s_blocksize;
++	buf->f_bfree = buf->f_bavail = 0;
++	buf->f_blocks = mtd->size >> sb->s_blocksize;
++	buf->f_namelen = 48;
++
++	return 0;
++}
++
++
++static int ciscoffs_readdir(struct file *filp, void *dirent, filldir_t filldir)
++{
++	struct inode *i = filp->f_dentry->d_inode; 
++	struct super_block *sb = i->i_sb;
++	struct mtd_info *mtd = sb->u.generic_sbp; 
++	cb_filehdr fh;
++	int hdrlen;
++
++	int stored = 0;
++
++	DEBUG(1, "inode = %8.8lX filp->f_pos = %8.8llX sb = %p mtd = %p",
++	      i->i_ino, filp->f_pos, sb, mtd);
++
++	if(i->i_ino == 0xfffffff0 && filp->f_pos == 0xffffffff) {
++		return 0;
++	}
++
++	/* Fake up . and .. */
++	if(i->i_ino == 0xfffffff0 && filp->f_pos == 0) {
++		if(filldir(dirent, ".", 1, 0, 0xfffffff0, DT_DIR) < 0)
++			return 0;
++
++		stored++;
++		filp->f_pos = 1;
++	}
++
++	if(i->i_ino == 0xfffffff0 && filp->f_pos == 1) {
++		if(filldir(dirent, "..", 2, 0, filp->f_dentry->d_parent->d_inode->i_ino, DT_DIR)< 0)
++			return stored;
++
++		stored++;
++		filp->f_pos = 2;
++	}
++
++	if(filp->f_pos >= 2) {
++		if(filp->f_pos == 2) {
++			filp->f_pos = 0;
++		} else {
++			filp->f_pos = NEXT_HEADER(filp->f_pos);
++		}
++
++		if((mtd->read(mtd, filp->f_pos, sizeof(cb_filehdr), &hdrlen, (char *)&fh) != 0) 
++		   || hdrlen != sizeof(cb_filehdr)) {
++			warn("ciscoffs: cant read magic");
++			return 0;
++		}
++		DEBUG(1, "magic = 0x%8X", ntohl(fh.magic));
++		while(ntohl(fh.magic) == CISCO_FH_MAGIC) {
++			u16 flags = ntohs(fh.flags);
++			DEBUG(1, "found file %s len = %d f_pos = %8.8lX flags = 0x%4.4X", 
++			      fh.name, ntohl(fh.length), (unsigned long)filp->f_pos, flags);
++			if(!IS_DELETED(flags)) {
++				if(filldir(dirent, fh.name, strlen(fh.name)+1, 0, 
++					   filp->f_pos+sizeof(cb_filehdr), 1) < 0)
++					return stored;
++				else
++					stored++;
++			}
++			filp->f_pos += ntohl(fh.length) + sizeof(cb_filehdr);
++			filp->f_pos = NEXT_HEADER(filp->f_pos);
++			if(filp->f_pos >= mtd->size)
++				return stored;
++
++			if((mtd->read(mtd, filp->f_pos, sizeof(cb_filehdr), &hdrlen, (char *)&fh) != 0)
++			   || hdrlen != sizeof(cb_filehdr)) {
++				warn("cant read magic");
++				filp->f_pos = 0xffffffff;
++			}
++		}
++	}
++	return 0;
++}
++
++
++static struct dentry *ciscoffs_lookup(struct inode *dir, struct dentry *dentry)
++{
++	cb_filehdr fh;
++	int hdrlen;
++	struct mtd_info *mtd = dir->i_sb->u.generic_sbp; 
++	unsigned long offset = dir->i_ino;
++	int res = -EACCES;
++	struct inode *inode;
++
++	DEBUG(1, "looking for file %s in dir inode %8.8lX, mtd = %p",
++	      dentry->d_name.name, offset, mtd);
++	if(offset == 0xfffffff0)
++		offset = 0;
++
++
++	if((mtd->read(mtd, offset, sizeof(cb_filehdr), &hdrlen, (char *)&fh) != 0) 
++	   || hdrlen != sizeof(cb_filehdr)) {
++		warn("cant read magic");
++		return ERR_PTR(res);
++	}
++	while(ntohl(fh.magic) == CISCO_FH_MAGIC) {
++		u16 flags = ntohs(fh.flags);
++		if(!IS_DELETED(flags) && !strcmp(fh.name, dentry->d_name.name)) {
++			inode = iget(dir->i_sb, offset);
++			d_add(dentry, inode);
++			return ERR_PTR(0);
++		}
++
++		offset += sizeof(cb_filehdr) + ntohl(fh.length);
++		offset = NEXT_HEADER(offset);
++		if(offset >= mtd->size)
++			goto nofile;
++
++		if((mtd->read(mtd, offset, sizeof(cb_filehdr), &hdrlen, (char *)&fh) != 0) 
++		   || hdrlen != sizeof(cb_filehdr)) {
++			warn("cant read magic");
++			goto err;
++		}
++	}
++
++ nofile:
++	d_add(dentry, NULL);
++	return ERR_PTR(0);
++
++ err:
++	return ERR_PTR(res);
++}
++
++
++static DECLARE_FSTYPE_DEV(ciscoffs_fs_type, "ciscoffs", ciscoffs_read_super);
++
++
++mod_init_t init_ciscoffs_fs(void)
++{
++	info("$Revision: 1.3 $");
++	return register_filesystem(&ciscoffs_fs_type);
++}
++
++
++mod_exit_t exit_ciscoffs_fs(void)
++{
++	unregister_filesystem(&ciscoffs_fs_type);
++}
++
++
++module_init(init_ciscoffs_fs);
++module_exit(exit_ciscoffs_fs);
++MODULE_LICENSE("GPL");

@@ -1,0 +1,5 @@
+ Documentation/Configure.help |    6 
+ drivers/mtd/maps/Config.in   |    1 
+ drivers/mtd/maps/Makefile    |    1 
+ drivers/mtd/maps/pcmciamtd.c |  904 +++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 912 insertions(+)

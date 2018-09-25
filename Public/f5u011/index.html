@@ -1,0 +1,54 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html>
+  <head>
+    <title>Belkin F5U011 USB Ethernet Adaptor Linux Driver</title>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  </head>
+
+  <body>
+    <h1>Belkin F5U011 USB Ethernet Adaptor Linux Driver</h1>
+    This patch adds support for the Belkin F5U011 to the catc.c driver.
+    It is currently a work in progress and is complete except for the
+    following issues:
+    <ul>
+      <li>Setting multicast mode and creating multicast hash. [FIXED]
+      <li>Getting line statistics (Collisions, frame errors).
+      <li>Changing the MAC address.
+    </ul>
+    <p>
+      It has support for Ethtool ioctls. The patch is against 2.5.4.
+    <p>
+      This device has the same USB vendor/product code (0x0423/0x000a) as the<br>
+      CATC NetMate device. However, even though this device is based on a CATC<br>
+      board, the catc.c driver that comes with Linux does not work with this device<br>
+      as it as a simpler device than the NetMate device. Unlike the NetMate,<br>
+      it only appears to allow one packet at a time to be transmitted or received<br>
+      to the device (the NetMate allows write combining to increase performance).<br>
+      It also has fewer commands, no registers and no LED control.
+      <p>
+      <a href="patch-2.5.4-f5u011.diff">patch-2.5.4-f5u011.diff</a>
+      <a href="patch-2.5.4-f5u011.diffstat">(diffstat)</a><br>
+      <p>
+      NEW This patch adds a fix for the multicast hash code.<br>
+      The code has also been better intergrated into the catc.c file<br>
+      so it is a smaller patch. This patch is against 2.5.5.
+      <p>
+      <a href="patch-2.5.5-f5u011.diff">patch-2.5.5-f5u011.diff</a>
+      <a href="patch-2.5.5-f5u011.diffstat">(diffstat)</a><br>
+      <p>
+      Backport of the above patch to 2.4.<br>
+      <a href="patch-2.4.18-f5u011.diff">patch-2.4.18-f5u011.diff</a><br>
+      <a href="patch-2.4.19-f5u011.diff">patch-2.4.19-f5u011.diff</a>
+
+      <p>
+      This code is now in 2.5.7.
+
+    <hr>
+    <address><a href="mailto:spse@secret.org.uk">Si</a></address>
+<!-- Created: Wed Jan 23 00:27:20 GMT 2002 -->
+<!-- hhmts start -->
+Last modified: Mon Sep 30 02:54:38 BST 2002
+<!-- hhmts end -->
+  </body>
+</html>

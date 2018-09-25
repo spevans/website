@@ -1,0 +1,860 @@
+diff -urN -X /home/spse/dontdiff linux-2.5.15-clean/drivers/usb/media/konicawc.c linux-2.5.15-konicawc/drivers/usb/media/konicawc.c
+--- linux-2.5.15-clean/drivers/usb/media/konicawc.c	Fri May  3 23:32:18 2002
++++ linux-2.5.15-konicawc/drivers/usb/media/konicawc.c	Sat May 11 00:16:31 2002
+@@ -1,6 +1,4 @@
+ /*
+- * $Id$
+- *
+  * konicawc.c - konica webcam driver
+  *
+  * Author: Simon Evans <spse@secret.org.uk>
+@@ -8,7 +6,7 @@
+  * Copyright (C) 2002 Simon Evans
+  *
+  * Licence: GPL
+- * 
++ *
+  * Driver for USB webcams based on Konica chipset. This
+  * chipset is used in Intel YC76 camera.
+  *
+@@ -18,6 +16,8 @@
+ #include <linux/module.h>
+ #include <linux/init.h>
+ 
++//#define DEBUG
++
+ #include "usbvideo.h"
+ 
+ #define MAX_BRIGHTNESS	108
+@@ -26,9 +26,11 @@
+ #define MAX_SHARPNESS	108
+ #define MAX_WHITEBAL	372
+ #define MAX_SPEED	6
++
++
+ #define MAX_CAMERAS	1
+ 
+-#define DRIVER_VERSION	"v1.1"
++#define DRIVER_VERSION	"v1.2"
+ #define DRIVER_DESC	"Konica Webcam driver"
+ 
+ enum ctrl_req {
+@@ -41,11 +43,14 @@
+ 
+ 
+ enum frame_sizes {
+-	SIZE_160X136	= 0,
+-	SIZE_176X144	= 1,
+-	SIZE_320X240	= 2,
++	SIZE_160X120	= 0,
++	SIZE_160X136	= 1,
++	SIZE_176X144	= 2,
++	SIZE_320X240	= 3,
++	
+ };
+ 
++#define MAX_FRAME_SIZE	SIZE_320X240
+ 
+ static usbvideo_t *cams;
+ 
+@@ -61,31 +66,36 @@
+ static int sharpness =	MAX_SHARPNESS/2;
+ static int whitebal =	3*(MAX_WHITEBAL/4);
+ 
+-static int speed_to_interface[] = { 1, 0, 3, 2, 4, 5, 6 };
++static int spd_to_iface[] = { 1, 0, 3, 2, 4, 5, 6 };
+ 
+ /* These FPS speeds are from the windows config box. They are
+  * indexed on size (0-2) and speed (0-6). Divide by 3 to get the
+  * real fps.
+  */
+ 
+-static int speed_to_fps[3][7] = { { 24, 40, 48, 60, 72, 80, 100 },
+-				  { 18, 30, 36, 45, 54, 60, 75  },
+-				  { 6,  10, 12, 15, 18, 20, 25  } };
+-
+-
+-static int camera_sizes[][2] = { { 160, 136 },
+-				 { 176, 144 },
+-				 { 320, 240 },
+-				 { } /* List terminator */
++static int spd_to_fps[][7] = { { 24, 40, 48, 60, 72, 80, 100 },
++			       { 24, 40, 48, 60, 72, 80, 100 },
++			       { 18, 30, 36, 45, 54, 60, 75  },
++			       { 6,  10, 12, 15, 18, 21, 25  } };
++
++struct cam_size {
++	u16	width;
++	u16	height;
++	u8	cmd;
+ };
+ 
++static struct cam_size camera_sizes[] = { { 160, 120, 0x7 },
++					  { 160, 136, 0xa },
++					  { 176, 144, 0x4 },
++					  { 320, 240, 0x5 } };
++
+ struct konicawc {
+ 	u8 brightness;		/* camera uses 0 - 9, x11 for real value */
+ 	u8 contrast;		/* as above */
+ 	u8 saturation;		/* as above */
+ 	u8 sharpness;		/* as above */
+ 	u8 white_bal;		/* 0 - 33, x11 for real value */
+-	u8 speed;		/* Stored as 0 - 6, used as index in speed_to_* (above) */
++	u8 speed;		/* Stored as 0 - 6, used as index in spd_to_* (above) */
+ 	u8 size;		/* Frame Size */
+ 	int height;
+ 	int width;
+@@ -93,6 +103,11 @@
+ 	u8 sts_buf[USBVIDEO_NUMSBUF][FRAMES_PER_DESC];
+ 	struct urb *last_data_urb;
+ 	int lastframe;
++	int cur_frame_size;	/* number of bytes in current frame size */
++	int maxline;		/* number of lines per frame */
++	int yplanesz;		/* Number of bytes in the Y plane */
++	unsigned int skip_frame:2;
++	unsigned int buttonsts:1;
+ };
+ 
+ 
+@@ -110,6 +125,20 @@
+ }
+ 
+ 
++static void konicawc_set_camera_size(uvd_t *uvd)
++{
++	struct konicawc *cam = (struct konicawc *)uvd->user_data;
++
++	konicawc_set_misc(uvd, 0x2, camera_sizes[cam->size].cmd, 0x08);
++	cam->width = camera_sizes[cam->size].width;
++	cam->height = camera_sizes[cam->size].height;
++	cam->yplanesz = cam->height * cam->width;
++	cam->cur_frame_size = (cam->yplanesz * 3) / 2;
++	cam->maxline = cam->yplanesz / 256;
++	uvd->videosize = VIDEOSIZE(cam->width, cam->height);
++}
++
++
+ static int konicawc_setup_on_open(uvd_t *uvd)
+ {
+ 	struct konicawc *cam = (struct konicawc *)uvd->user_data;
+@@ -130,22 +159,11 @@
+ 	dbg("setting sharpness to %d (%d)", cam->sharpness,
+ 	    cam->sharpness * 11);
+ 	konicawc_set_value(uvd, cam->sharpness, SetSharpness);
+-	dbg("setting size %d", cam->size);
+-	switch(cam->size) {
+-	case 0:
+-		konicawc_set_misc(uvd, 0x2, 0xa, 0x08);
+-		break;
+-
+-	case 1:
+-		konicawc_set_misc(uvd, 0x2, 4, 0x08);
+-		break;
+-
+-	case 2:
+-		konicawc_set_misc(uvd, 0x2, 5, 0x08);
+-		break;
+-	}
++	konicawc_set_camera_size(uvd);
+ 	konicawc_set_misc(uvd, 0x2, 1, 0x0b);
+ 	cam->lastframe = -1;
++	cam->skip_frame = 2;
++	cam->buttonsts = 0;
+ 	return 0;
+ }
+ 
+@@ -154,6 +172,7 @@
+ {
+ 	struct konicawc *cam = (struct konicawc *)uvd->user_data;
+ 
++	konicawc_set_misc(uvd, 0x2, 0, 0x0b);
+ 	dbg("new brightness: %d", uvd->vpic.brightness);
+ 	uvd->vpic.brightness = (uvd->vpic.brightness > MAX_BRIGHTNESS) ? MAX_BRIGHTNESS : uvd->vpic.brightness;
+ 	if(cam->brightness != uvd->vpic.brightness / 11) {
+@@ -171,6 +190,7 @@
+ 		    cam->contrast * 11);
+ 		konicawc_set_value(uvd, cam->contrast, SetContrast);
+ 	}
++	konicawc_set_misc(uvd, 0x2, 1, 0x0b);
+ }
+ 
+ 
+@@ -180,14 +200,14 @@
+ 	int i, totlen = 0;
+ 	unsigned char *status = stsurb->transfer_buffer;
+ 	int keep = 0, discard = 0, bad = 0;
+-	static int buttonsts = 0;
++	struct konicawc *cam = (struct konicawc *)uvd->user_data;
+ 
+ 	for (i = 0; i < dataurb->number_of_packets; i++) {
+-		int button = buttonsts;
++		int button = cam->buttonsts;
+ 		unsigned char sts;
+ 		int n = dataurb->iso_frame_desc[i].actual_length;
+ 		int st = dataurb->iso_frame_desc[i].status;
+-		cdata = dataurb->transfer_buffer + 
++		cdata = dataurb->transfer_buffer +
+ 			dataurb->iso_frame_desc[i].offset;
+ 
+ 		/* Detect and ignore errored packets */
+@@ -210,8 +230,8 @@
+ 
+ 		/* sts: 0x80-0xff: frame start with frame number (ie 0-7f)
+ 		 * otherwise:
+-		 * bit 0 0:drop packet (padding data)
+-		 *	 1 keep packet
++		 * bit 0 0: keep packet
++		 *	 1: drop packet (padding data)
+ 		 *
+ 		 * bit 4 0 button not clicked
+ 		 *       1 button clicked
+@@ -225,10 +245,10 @@
+ 		
+ 		/* work out the button status, but dont do
+ 		   anything with it for now */
+-		   
+-		if(button != buttonsts) {
++
++		if(button != cam->buttonsts) {
+ 			dbg("button: %sclicked", button ? "" : "un");
+-			buttonsts = button;
++			cam->buttonsts = button;
+ 		}
+ 
+ 		if(sts == 0x01) { /* drop frame */
+@@ -243,20 +263,53 @@
+ 		}
+ 
+ 		keep++;
+-		if(*(status+i) & 0x80) { /* frame start */
++		if(sts & 0x80) { /* frame start */
+ 			unsigned char marker[] = { 0, 0xff, 0, 0x00 };
++
++			if(cam->skip_frame == 2) {
++				cam->skip_frame--;
++				continue;
++			}
++				
++			/* Do we have enough space for this frame? */
++#if 0
++			dbg("RingQueue: need %d have %d", cam->cur_frame_size + 4, RingQueue_GetFreeSpace(&uvd->dp));
++			if(RingQueue_GetFreeSpace(&uvd->dp) < cam->cur_frame_size + 4) {
++				info("Dropping frame");
++				cam->skip_frame = 1;
++				continue;
++			} else {
++				cam->skip_frame = 0;
++			}
++#endif
++			cam->skip_frame = 0;
++
+ 			if(debug > 1)
+ 				dbg("Adding Marker packet = %d, frame = %2.2x",
+ 				    i, *(status+i));
+-			marker[3] = *(status+i) - 0x80;
+-			RingQueue_Enqueue(&uvd->dp, marker, 4);			
++			marker[3] = sts & 0x7F;
++			if(RingQueue_GetFreeSpace(&uvd->dp) < (4+n)) {
++				err("RingQueue Full! (cant add header) - Dropping frame");
++				cam->skip_frame = 1;
++			} else {
++				RingQueue_Enqueue(&uvd->dp, marker, 4);
++			}
++				
+ 			totlen += 4;
+ 		}
++		if(cam->skip_frame)
++			continue;
++
+ 		totlen += n;	/* Little local accounting */
+ 		if(debug > 5)
+ 			dbg("Adding packet %d, bytes = %d", i, n);
+-		RingQueue_Enqueue(&uvd->dp, cdata, n);
+-
++		if(RingQueue_GetFreeSpace(&uvd->dp) < n) {
++			err("RingQueue Full! (want %d got %d) - Dropping frame", n,
++			    RingQueue_GetFreeSpace(&uvd->dp));
++			cam->skip_frame = 1;
++		} else {
++			RingQueue_Enqueue(&uvd->dp, cdata, n);
++		}
+ 	}
+ 	if(debug > 8) {
+ 		dbg("finished: keep = %d discard = %d bad = %d added %d bytes",
+@@ -276,6 +329,17 @@
+ 	if (!CAMERA_IS_OPERATIONAL(uvd))
+ 		return;
+ 
++	if(urb->status) {
++		if(urb->status == -EOVERFLOW) {
++			dbg("isoc_irq: got babble");
++		} else if(urb->status == -ENOENT || urb->status == -EINPROGRESS) {
++			dbg("isoc_irq: URB unlinked");
++		} else {
++			dbg("isoc_irq: status %d", urb->status);
++		}
++		return;
++	}
++
+ 	if (urb->actual_length > 32) {
+ 		cam->last_data_urb = urb;
+ 		return;
+@@ -301,13 +365,10 @@
+ 		cam->last_data_urb = NULL;
+ 	}
+ 	uvd->stats.urb_length = len;
+-	if (len <= 0) {
+-		goto urb_done_with;
+-	}
+-
+-	/* Here we got some data */
+ 	uvd->stats.data_count += len;
+-	RingQueue_WakeUpInterruptible(&uvd->dp);
++
++	if(RingQueue_GetLength(&uvd->dp) >= 384)
++		RingQueue_WakeUpInterruptible(&uvd->dp);
+ 
+ urb_done_with:
+ 
+@@ -324,7 +385,12 @@
+ 	struct usb_device *dev = uvd->dev;
+ 	int i, errFlag;
+ 	struct konicawc *cam = (struct konicawc *)uvd->user_data;
++	int pktsz;
++	struct usb_interface_descriptor *interface;
+ 
++	interface = &dev->actconfig->interface[uvd->iface].altsetting[spd_to_iface[cam->speed]];
++	pktsz = interface->endpoint[1].wMaxPacketSize;
++	dbg("pktsz = %d", pktsz);
+ 	if (!CAMERA_IS_OPERATIONAL(uvd)) {
+ 		err("Camera is not operational");
+ 		return -EFAULT;
+@@ -350,10 +416,10 @@
+ 		urb->transfer_buffer = uvd->sbuf[i].data;
+ 		urb->complete = konicawc_isoc_irq;
+ 		urb->number_of_packets = FRAMES_PER_DESC;
+-		urb->transfer_buffer_length = uvd->iso_packet_len * FRAMES_PER_DESC;
+-		for (j=k=0; j < FRAMES_PER_DESC; j++, k += uvd->iso_packet_len) {
++		urb->transfer_buffer_length = pktsz * FRAMES_PER_DESC;
++		for (j=k=0; j < FRAMES_PER_DESC; j++, k += pktsz) {
+ 			urb->iso_frame_desc[j].offset = k;
+-			urb->iso_frame_desc[j].length = uvd->iso_packet_len;
++			urb->iso_frame_desc[j].length = pktsz;
+ 		}
+ 
+ 		urb = cam->sts_urb[i];
+@@ -439,14 +505,12 @@
+ 
+ static void konicawc_process_isoc(uvd_t *uvd, usbvideo_frame_t *frame)
+ {	
+-	int n;
+-	int maxline, yplanesz;
+ 	struct konicawc *cam = (struct konicawc *)uvd->user_data;
+-	assert(uvd != NULL);
++	int maxline = cam->maxline;
++	int yplanesz = cam->yplanesz;
++
+ 	assert(frame != NULL);
+ 
+-	maxline = (cam->height * cam->width * 3) / (2 * 384);
+-	yplanesz = cam->height * cam->width;
+ 	if(debug > 5)
+ 		dbg("maxline = %d yplanesz = %d", maxline, yplanesz);
+ 	
+@@ -466,15 +530,12 @@
+ 			    (RING_QUEUE_PEEK(&uvd->dp, 3) < 0x80)) {
+ 				curframe = RING_QUEUE_PEEK(&uvd->dp, 3);
+ 				if(cam->lastframe != -1) {
+-					if(curframe < cam->lastframe) {
+-						fdrops = (curframe + 0x80) - cam->lastframe;
+-					} else {
+-						fdrops = curframe - cam->lastframe;
+-					}
++					fdrops = (0x80 + curframe - cam->lastframe) & 0x7F;
+ 					fdrops--;
+-					if(fdrops)
++					if(fdrops) {
+ 						info("Dropped %d frames (%d -> %d)", fdrops,
+ 						     cam->lastframe, curframe);
++					}
+ 				}
+ 				cam->lastframe = curframe;
+ 				frame->curline = 0;
+@@ -485,18 +546,20 @@
+ 			RING_QUEUE_DEQUEUE_BYTES(&uvd->dp, 1);
+ 			drop++;
+ 		}
++		if(drop)
++			dbg("dropped %d bytes looking for new frame", drop);
+ 	}
+ 
+ 	if(frame->scanstate == ScanState_Scanning)
+ 		return;
+ 		
+-	/* Try to move data from queue into frame buffer 
++	/* Try to move data from queue into frame buffer
+ 	 * We get data in blocks of 384 bytes made up of:
+ 	 * 256 Y, 64 U, 64 V.
+ 	 * This needs to be written out as a Y plane, a U plane and a V plane.
+ 	 */
+ 		
+-	while ( frame->curline < maxline && (n = RingQueue_GetLength(&uvd->dp)) >= 384) {
++	while ( frame->curline < maxline && (RingQueue_GetLength(&uvd->dp) >= 384)) {
+ 		/* Y */
+ 		RingQueue_Dequeue(&uvd->dp, frame->data + (frame->curline * 256), 256);
+ 		/* U */
+@@ -519,12 +582,102 @@
+ }
+ 
+ 
+-static int konicawc_calculate_fps(uvd_t *uvd)
++static int konicawc_find_fps(int size, int fps)
+ {
+-	struct konicawc *t = uvd->user_data;
+-	dbg("fps = %d", speed_to_fps[t->size][t->speed]/3);
++	int i;
++
++	fps *= 3;
++	dbg("konica_find_fps: size = %d fps = %d", size, fps);
++	if(fps <= spd_to_fps[size][0])
++		return 0;
+ 
+-	return speed_to_fps[t->size][t->speed]/3;
++	if(fps >= spd_to_fps[size][MAX_SPEED])
++		return MAX_SPEED;
++
++	for(i = 0; i < MAX_SPEED; i++) {
++		if((fps >= spd_to_fps[size][i]) && (fps <= spd_to_fps[size][i+1])) {
++			dbg("fps %d between %d and %d", fps, i, i+1);
++			if( (fps - spd_to_fps[size][i]) < (spd_to_fps[size][i+1] - fps))
++				return i;
++			else
++				return i+1;
++		}
++	}
++	return MAX_SPEED+1;
++}
++
++
++static int konicawc_set_video_mode(uvd_t *uvd, int x, int y, int fps)
++{
++	struct konicawc *cam = (struct konicawc *)uvd->user_data;
++	int newspeed = cam->speed;
++	int newsize;
++
++	if(x > 0 && y > 0) {
++		if(debug >= 2)
++			dbg("trying to find size %d,%d", x, y);
++		for(newsize = 0; newsize <= MAX_FRAME_SIZE; newsize++) {
++			if((camera_sizes[newsize].width == x) && (camera_sizes[newsize].height == y))
++				break;
++		}
++	} else {
++		newsize = cam->size;
++	}
++
++	if(newsize > MAX_FRAME_SIZE) {
++		dbg("couldnt find size %d,%d", x, y);
++		return -EINVAL;
++	}
++
++	if(fps > 0) {
++		dbg("trying to set fps to %d", fps);
++		newspeed = konicawc_find_fps(newsize, fps);
++		dbg("find_fps returned %d (%d)", newspeed, spd_to_fps[newsize][newspeed]);
++	}
++
++	if(newspeed > MAX_SPEED)
++		return -EINVAL;
++
++	dbg("setting size to %d speed to %d", newsize, newspeed);
++	if((newsize == cam->size) && (newspeed == cam->speed)) {
++		dbg("Nothing to do");
++		return 0;
++	}
++	info("setting to  %dx%d @ %d fps", camera_sizes[newsize].width,
++	     camera_sizes[newsize].height, spd_to_fps[newsize][newspeed]/3);
++
++	konicawc_stop_data(uvd);
++	konicawc_set_misc(uvd, 0x2, 0, 0x0b);
++	uvd->ifaceAltActive = spd_to_iface[newspeed];
++	dbg("new interface = %d", uvd->ifaceAltActive);
++	cam->speed = newspeed;
++
++	if(cam->size != newsize) {
++		cam->size = newsize;
++		konicawc_set_camera_size(uvd);
++	}
++
++	/* Flush the input queue and clear any current frame in progress */
++
++	RingQueue_Flush(&uvd->dp);
++	cam->skip_frame = 2;
++	cam->lastframe = -1;
++	if(uvd->curframe != -1) {
++	  uvd->frame[uvd->curframe].curline = 0;
++	  uvd->frame[uvd->curframe].seqRead_Length = 0;
++	  uvd->frame[uvd->curframe].seqRead_Index = 0;
++	}
++
++	konicawc_set_misc(uvd, 0x2, 1, 0x0b);
++	konicawc_start_data(uvd);
++	return 0;
++}
++
++
++static int konicawc_calculate_fps(uvd_t *uvd)
++{
++	struct konicawc *cam = uvd->user_data;
++	return spd_to_fps[cam->size][cam->speed]/3;
+ }
+ 
+ 
+@@ -561,10 +714,10 @@
+ 	uvd->vcap.type = VID_TYPE_CAPTURE;
+ 	uvd->vcap.channels = 1;
+ 	uvd->vcap.audios = 0;
+-	uvd->vcap.minwidth = camera_sizes[cam->size][0];
+-	uvd->vcap.minheight = camera_sizes[cam->size][1];
+-	uvd->vcap.maxwidth = camera_sizes[cam->size][0];
+-	uvd->vcap.maxheight = camera_sizes[cam->size][1];
++	uvd->vcap.minwidth = camera_sizes[SIZE_160X120].width;
++	uvd->vcap.minheight = camera_sizes[SIZE_160X120].height;
++	uvd->vcap.maxwidth = camera_sizes[SIZE_320X240].width;
++	uvd->vcap.maxheight = camera_sizes[SIZE_320X240].height;
+ 
+ 	memset(&uvd->vchan, 0, sizeof(uvd->vchan));
+ 	uvd->vchan.flags = 0 ;
+@@ -582,7 +735,6 @@
+ 	if(konicawc_set_misc(uvd, 0x2, 0, 0xd))
+ 		dbg("2,0,d failed");
+ 	dbg("setting initial values");
+-
+ }
+ 
+ 
+@@ -605,10 +757,8 @@
+ 
+ 	/* Validate found interface: must have one ISO endpoint */
+ 	nas = dev->actconfig->interface[ifnum].num_altsetting;
+-	if (debug > 0)
+-		info("Number of alternate settings=%d.", nas);
+-	if (nas < 8) {
+-		err("Too few alternate settings for this camera!");
++	if (nas != 8) {
++		err("Incorrect number of alternate settings (%d) for this camera!", nas);
+ 		return NULL;
+ 	}
+ 	/* Validate all alternate settings */
+@@ -647,22 +797,20 @@
+ 				return NULL;
+ 			}
+ 		} else {
+-			if (i == speed_to_interface[speed]) {
++			if (i == spd_to_iface[speed]) {
+ 				/* This one is the requested one */
+ 				actInterface = i;
+-				maxPS = endpoint->wMaxPacketSize;
+-				if (debug > 0) {
+-					info("Selecting requested active setting=%d. maxPS=%d.",
+-					     i, maxPS);
+-				}
+ 			}
+ 		}
++		if(endpoint->wMaxPacketSize > maxPS)
++			maxPS = endpoint->wMaxPacketSize;
+ 	}
+ 	if(actInterface == -1) {
+ 		err("Cant find required endpoint");
+ 		return NULL;
+ 	}
+ 
++	dbg("Selecting requested active setting=%d. maxPS=%d.", actInterface, maxPS);
+ 
+ 	/* Code below may sleep, need to lock module while we are here */
+ 	MOD_INC_USE_COUNT;
+@@ -681,26 +829,10 @@
+ 			}
+ 		}
+ 		cam->speed = speed;
+-		switch(size) {
+-		case SIZE_160X136:
+-		default:
+-			cam->height = 136;
+-			cam->width = 160;
+-			cam->size = SIZE_160X136;
+-			break;
+-
+-		case SIZE_176X144:
+-			cam->height = 144;
+-			cam->width = 176;
+-			cam->size = SIZE_176X144;
+-			break;
+-
+-		case SIZE_320X240:
+-			cam->height = 240;
+-			cam->width = 320;
+-			cam->size = SIZE_320X240;
+-			break;
+-		}
++		RESTRICT_TO_RANGE(size, SIZE_160X120, SIZE_320X240);
++		cam->width = camera_sizes[size].width;
++		cam->height = camera_sizes[size].height;
++		cam->size = size;
+ 
+ 		uvd->flags = 0;
+ 		uvd->debug = debug;
+@@ -712,14 +844,14 @@
+ 		uvd->iso_packet_len = maxPS;
+ 		uvd->paletteBits = 1L << VIDEO_PALETTE_YUV420P;
+ 		uvd->defaultPalette = VIDEO_PALETTE_YUV420P;
+-		uvd->canvas = VIDEOSIZE(cam->width, cam->height);
+-		uvd->videosize = uvd->canvas;
++		uvd->canvas = VIDEOSIZE(320, 240);
++		uvd->videosize = VIDEOSIZE(cam->width, cam->height);
+ 
+ 		/* Initialize konicawc specific data */
+ 		konicawc_configure_video(uvd);
+ 
+ 		i = usbvideo_RegisterVideoDevice(uvd);
+-		uvd->max_frame_size = (cam->width * cam->height * 3)/2;
++		uvd->max_frame_size = (320 * 240 * 3)/2;
+ 		if (i != 0) {
+ 			err("usbvideo_RegisterVideoDevice() failed.");
+ 			uvd = NULL;
+@@ -757,6 +889,7 @@
+ 	cbTbl.setupOnOpen = konicawc_setup_on_open;
+ 	cbTbl.processData = konicawc_process_isoc;
+ 	cbTbl.getFPS = konicawc_calculate_fps;
++	cbTbl.setVideoMode = konicawc_set_video_mode;
+ 	cbTbl.startDataPump = konicawc_start_data;
+ 	cbTbl.stopDataPump = konicawc_stop_data;
+ 	cbTbl.adjustPicture = konicawc_adjust_picture;
+@@ -784,9 +917,9 @@
+ MODULE_AUTHOR("Simon Evans <spse@secret.org.uk>");
+ MODULE_DESCRIPTION(DRIVER_DESC);
+ MODULE_PARM(speed, "i");
+-MODULE_PARM_DESC(speed, "FPS speed: 0 (slowest) - 6 (fastest)");
++MODULE_PARM_DESC(speed, "Initial speed: 0 (slowest) - 6 (fastest)");
+ MODULE_PARM(size, "i");
+-MODULE_PARM_DESC(size, "Frame Size 0: 160x136 1: 176x144 2: 320x240");
++MODULE_PARM_DESC(size, "Initial Size 0: 160x120 1: 160x136 2: 176x144 3: 320x240");
+ MODULE_PARM(brightness, "i");
+ MODULE_PARM_DESC(brightness, "Initial brightness 0 - 108");
+ MODULE_PARM(contrast, "i");
+diff -urN -X /home/spse/dontdiff linux-2.5.15-clean/drivers/usb/media/usbvideo.c linux-2.5.15-konicawc/drivers/usb/media/usbvideo.c
+--- linux-2.5.15-clean/drivers/usb/media/usbvideo.c	Fri May  3 23:32:18 2002
++++ linux-2.5.15-konicawc/drivers/usb/media/usbvideo.c	Sat May 11 00:15:50 2002
+@@ -135,9 +135,21 @@
+ 
+ static void RingQueue_Allocate(RingQueue_t *rq, int rqLen)
+ {
++	/* Make sure the requested size is a power of 2 and
++	   round up if necessary. This allows index wrapping
++	   using masks rather than modulo */
++
++	int i = 1;
+ 	assert(rq != NULL);
+ 	assert(rqLen > 0);
++
++	while(rqLen >> i)
++		i++;
++	if(rqLen != 1 << (i-1))
++		rqLen = 1 << i;
++
+ 	rq->length = rqLen;
++	rq->ri = rq->wi = 0;
+ 	rq->queue = usbvideo_rvmalloc(rq->length);
+ 	assert(rq->queue != NULL);
+ }
+@@ -161,12 +173,32 @@
+ 
+ int RingQueue_Dequeue(RingQueue_t *rq, unsigned char *dst, int len)
+ {
+-	int i;
++	int rql, toread;
++
+ 	assert(rq != NULL);
+ 	assert(dst != NULL);
+-	for (i=0; i < len; i++) {
+-		dst[i] = rq->queue[rq->ri];
+-		RING_QUEUE_DEQUEUE_BYTES(rq,1);
++
++	rql = RingQueue_GetLength(rq);
++	if(!rql)
++		return 0;
++
++	/* Clip requested length to available data */
++	if(len > rql)
++		len = rql;
++
++	toread = len;
++	if(rq->ri > rq->wi) {
++		/* Read data from tail */
++		int read = (toread < (rq->length - rq->ri)) ? toread : rq->length - rq->ri;
++		memcpy(dst, rq->queue + rq->ri, read);
++		toread -= read;
++		dst += read;
++		rq->ri = (rq->ri + read) & (rq->length-1);
++	}
++	if(toread) {
++		/* Read data from head */
++		memcpy(dst, rq->queue + rq->ri, toread);
++		rq->ri = (rq->ri + toread) & (rq->length-1);
+ 	}
+ 	return len;
+ }
+@@ -194,7 +226,7 @@
+ 		if (m > q_avail)
+ 			m = q_avail;
+ 
+-		memmove(rq->queue + rq->wi, cdata, m);
++		memcpy(rq->queue + rq->wi, cdata, m);
+ 		RING_QUEUE_ADVANCE_INDEX(rq, wi, m);
+ 		cdata += m;
+ 		enqueued += m;
+@@ -205,24 +237,6 @@
+ 
+ EXPORT_SYMBOL(RingQueue_Enqueue);
+ 
+-int RingQueue_GetLength(const RingQueue_t *rq)
+-{
+-	int ri, wi;
+-
+-	assert(rq != NULL);
+-
+-	ri = rq->ri;
+-	wi = rq->wi;
+-	if (ri == wi)
+-		return 0;
+-	else if (ri < wi)
+-		return wi - ri;
+-	else
+-		return wi + (rq->length - ri);
+-}
+-
+-EXPORT_SYMBOL(RingQueue_GetLength);
+-
+ static void RingQueue_InterruptibleSleepOn(RingQueue_t *rq)
+ {
+ 	assert(rq != NULL);
+@@ -238,6 +252,16 @@
+ 
+ EXPORT_SYMBOL(RingQueue_WakeUpInterruptible);
+ 
++void RingQueue_Flush(RingQueue_t *rq)
++{
++	assert(rq != NULL);
++	rq->ri = 0;
++	rq->wi = 0;
++}
++
++EXPORT_SYMBOL(RingQueue_Flush);
++
++
+ /*
+  * usbvideo_VideosizeToString()
+  *
+@@ -374,7 +398,7 @@
+ 		q_used = RingQueue_GetLength(&uvd->dp);
+ 		if ((uvd->dp.ri + q_used) >= uvd->dp.length) {
+ 			u_hi = uvd->dp.length;
+-			u_lo = (q_used + uvd->dp.ri) % uvd->dp.length;
++			u_lo = (q_used + uvd->dp.ri) & (uvd->dp.length-1);
+ 		} else {
+ 			u_hi = (q_used + uvd->dp.ri);
+ 			u_lo = -1;
+@@ -1256,7 +1280,7 @@
+ 		/* Allocate memory for the frame buffers */
+ 		uvd->fbuf_size = USBVIDEO_NUMFRAMES * uvd->max_frame_size;
+ 		uvd->fbuf = usbvideo_rvmalloc(uvd->fbuf_size);
+-		RingQueue_Allocate(&uvd->dp, 128*1024); /* FIXME #define */
++		RingQueue_Allocate(&uvd->dp, RING_QUEUE_SIZE);
+ 		if ((uvd->fbuf == NULL) ||
+ 		    (!RingQueue_IsAllocated(&uvd->dp))) {
+ 			err("%s: Failed to allocate fbuf or dp", proc);
+@@ -1443,7 +1467,8 @@
+ 		case VIDIOCSWIN:
+ 		{
+ 			struct video_window *vw = arg;
+-
++			int fps;
++			/*
+ 			if (vw->flags)
+ 				return -EINVAL;
+ 			if (vw->clipcount)
+@@ -1452,7 +1477,17 @@
+ 				return -EINVAL;
+ 			if (vw->height != VIDEOSIZE_Y(uvd->canvas))
+ 				return -EINVAL;
+-
++			*/
++			fps = vw->flags;
++			if(VALID_CALLBACK(uvd, setVideoMode)) {
++				int err;
++				err = GET_CALLBACK(uvd, setVideoMode)(uvd, vw->width, vw->height, fps);
++				if(!err) {
++					return 0;
++				} else {
++					return -EINVAL;
++				}
++			}
+ 			return 0;
+ 		}
+ 		case VIDIOCGWIN:
+@@ -1461,8 +1496,8 @@
+ 
+ 			vw->x = 0;
+ 			vw->y = 0;
+-			vw->width = VIDEOSIZE_X(uvd->canvas);
+-			vw->height = VIDEOSIZE_Y(uvd->canvas);
++			vw->width = VIDEOSIZE_X(uvd->videosize);
++			vw->height = VIDEOSIZE_Y(uvd->videosize);
+ 			vw->chromakey = 0;
+ 			if (VALID_CALLBACK(uvd, getFPS))
+ 				vw->flags = GET_CALLBACK(uvd, getFPS)(uvd);
+diff -urN -X /home/spse/dontdiff linux-2.5.15-clean/drivers/usb/media/usbvideo.h linux-2.5.15-konicawc/drivers/usb/media/usbvideo.h
+--- linux-2.5.15-clean/drivers/usb/media/usbvideo.h	Fri May 10 08:27:39 2002
++++ linux-2.5.15-konicawc/drivers/usb/media/usbvideo.h	Sat May 11 00:23:25 2002
+@@ -113,9 +113,10 @@
+     mr = LIMIT_RGB(mm_r); \
+ }
+ 
+-#define	RING_QUEUE_ADVANCE_INDEX(rq,ind,n) (rq)->ind = ((rq)->ind + (n)) % (rq)->length
++#define	RING_QUEUE_SIZE		(128*1024)	/* Must be a power of 2 */
++#define	RING_QUEUE_ADVANCE_INDEX(rq,ind,n) (rq)->ind = ((rq)->ind + (n)) & ((rq)->length-1)
+ #define	RING_QUEUE_DEQUEUE_BYTES(rq,n) RING_QUEUE_ADVANCE_INDEX(rq,ri,n)
+-#define	RING_QUEUE_PEEK(rq,ofs) ((rq)->queue[((ofs) + (rq)->ri) % (rq)->length])
++#define	RING_QUEUE_PEEK(rq,ofs) ((rq)->queue[((ofs) + (rq)->ri) & ((rq)->length-1)])
+ 
+ typedef struct {
+ 	unsigned char *queue;	/* Data from the Isoc data pump */
+@@ -271,6 +272,7 @@
+ 	int (*procfs_write)(struct file *file,const char *buffer,unsigned long count,void *data);
+ 	int (*startDataPump)(uvd_t *uvd);
+ 	void (*stopDataPump)(uvd_t *uvd);
++	int (*setVideoMode)(uvd_t *, int, int, int);
+ } usbvideo_cb_t;
+ 
+ struct s_usbvideo_t {
+@@ -306,8 +308,18 @@
+ 
+ int  RingQueue_Dequeue(RingQueue_t *rq, unsigned char *dst, int len);
+ int  RingQueue_Enqueue(RingQueue_t *rq, const unsigned char *cdata, int n);
+-int  RingQueue_GetLength(const RingQueue_t *rq);
+ void RingQueue_WakeUpInterruptible(RingQueue_t *rq);
++void RingQueue_Flush(RingQueue_t *rq);
++
++static inline int RingQueue_GetLength(const RingQueue_t *rq)
++{
++	return (rq->wi - rq->ri + rq->length) & (rq->length-1);
++}
++
++static inline int RingQueue_GetFreeSpace(const RingQueue_t *rq)
++{
++	return rq->length - RingQueue_GetLength(rq);
++}
+ 
+ void usbvideo_DrawLine(
+ 	usbvideo_frame_t *frame,

@@ -1,0 +1,7 @@
+ linux-2.5.3-konicawc/drivers/usb/Config.help |   15 
+ linux-2.5.3-konicawc/drivers/usb/Config.in   |    1 
+ linux-2.5.3-konicawc/drivers/usb/Makefile    |    1 
+ linux-2.5.3-konicawc/drivers/usb/konicawc.c  |  737 +++++++++++++++++++++++++++
+ linux-2.5.3-konicawc/drivers/usb/usbvideo.c  |   20 
+ linux-2.5.3-konicawc/drivers/usb/usbvideo.h  |    2 
+ 6 files changed, 771 insertions, 5 deletions

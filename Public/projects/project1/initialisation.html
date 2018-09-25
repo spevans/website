@@ -1,0 +1,202 @@
+
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maximum-scale=1" media="(device-height: 568px)">
+        <link rel="stylesheet" type="text/css" href="github.css">
+    </head>
+    <body>
+<div id="readme" class="readme blob instapaper_body">
+<article class="markdown-body entry-content" itemprop="text">
+
+<table style="border-collapse: collapse; border: 0px;">
+    <tr style="border: none">
+        <td style="border: none; text-align: center; width: 40%"><a href="development.html">&lt; Prev</a></td>
+        <td style="border: none; text-align: center; width: 20%"><a href="index.html">Top</a></td>
+        <td style="border: none; text-align: center; width: 40%"><a href="working-with-c.html">Next &gt;</a></td>
+    </tr>
+</table>
+
+<h1><a id="user-content-initialisation" class="anchor" href="#initialisation" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Initialisation</h1>
+
+<h2><a id="user-content-from-boot-to-swift-startup" class="anchor" href="#from-boot-to-swift-startup" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>From boot to Swift startup()</h2>
+
+<ul>
+<li>BIOS</li>
+</ul>
+
+<p>Everything from the boot sector until startup() in <a href="https://github.com/spevans/swift-project1/blob/master/kernel/init/startup.swift">startup.swift</a>
+is written in x86 assembly.</p>
+
+<p>Boot sectors are always written in ASM due to the small size (512 bytes) and
+the need to put certain bytes in certain offsets. It may be possible to write
+one in C but it would be composed almost entirely of inline assembly due to
+segment and stack setup, and BIOS calls.</p>
+
+<p>The bootsector loads the secondary loader which is responsible for:</p>
+
+<ol>
+<li>Checking CPU is 64bit</li>
+<li>Getting the E820 memory map</li>
+<li>Opening the A20 address gate</li>
+<li>Disabling all interrupts including NMI</li>
+<li>Loading the kernel into memory above 1MB</li>
+<li>Setting up the page tables</li>
+<li>Entering Long mode (64 bit) and jumping to <code>main</code> in <a href="https://github.com/spevans/swift-project1/blob/master/kernel/init/main.asm">main.asm</a></li>
+</ol>
+
+<p>Again this was all done in assembly because it has code to switch CPU modes
+(switching between real and protected) to load the kernel into high memory and
+also to enter 64bit. It might have been possible to do some parts in C but not
+Swift due to the size of binaries that are created when stdlib is linked into a
+binary. The code also has to be built for different cpu modes (16, 32 and 64)
+which makes it hard to do for anything other than assembly.</p>
+
+<p>The second stage loader was kept small at under 1.5K so that bootsector + loader
+was never more than 2K. This simplified issues with ISO CD-ROM booting.</p>
+
+<p>The conclusion is that writing the BIOS boot sequence in Swift would basically
+be very difficult and if it was attempted would be largely a collection of
+assembly routines. Swift's safety would offer very little advantage here.</p>
+
+<ul>
+<li>EFI</li>
+</ul>
+
+<p>EFI booting was added so that I could test on my Macbook (3,1 Late 2007). The
+EFI code is much simplified because the firmware already puts the cpu into 64bit
+mode and loads the kernel (embedded in a .efi file) into memory. The EFI code
+only needs to do the following:</p>
+
+<ol>
+<li>Allocate memory for the kernel and BSS and copy the kernel to the new memory</li>
+<li>Setup page tables for kernel</li>
+<li>Set a graphics mode and determine the frame buffer properties</li>
+<li>Obtain the memory map of the host and call ExitBootServices() exiting the EFI
+firmware</li>
+<li>Pivot to the new page tables and call <code>main</code></li>
+</ol>
+
+<p>The EFI loader code is written in C using some helper functions in <a href="https://github.com/spevans/swift-project1/blob/master/boot/efi_entry.asm">efi_entry.asm</a>.
+It would be possible to write the EFI code in Swift using the same helper
+functions that the C version uses but it would also need to be linked to the
+extra undefined functions that the kernel is linked to. This would have the
+disadvantage of making the .efi file very large.</p>
+
+<h2><a id="user-content-thread-local-storage-tls" class="anchor" href="#thread-local-storage-tls" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Thread Local Storage (TLS)</h2>
+
+<p>To support the use of <code>swift_once</code> via <code>pthread_once</code> in <a href="https://github.com/spevans/swift-project1/blob/master/fakelib/linux_libc.c#L98">linux_libc.c</a>
+thread local storage <a href="https://uclibc.org/docs/tls.pdf">TLS</a> needs to be taken
+into account. There are 2 methods for implementing it in ELF: by implementing
+<code>__tls_get_addr()</code> or using the <code>%fs</code> segment register.</p>
+
+<p>I opted to implement the <code>%fs</code> segment register which involved adding an extra
+entry to the GDT. Its a bit of a hacked up solution as it just allocates a small
+size for the region. In the future I may change it to the other method by
+implementing  <code>__tls_get_addr()</code>.</p>
+
+<p>One problem caused by using the <code>%fs</code> is that the addressing is RIP relative and
+so addresses must be within 32bit (4GB) space. This causes a limitation on the
+address the kernel can be linked to. Thats why in the <a href="https://github.com/spevans/swift-project1/blob/master/linker.script#L10">linker script</a> the link address is
+0x40100000 and not a more conventional 0x8000000000000000 (8EB) that is often
+used where the kernel occupies the 'top half' of the address space (<a href="https://en.wikipedia.org/wiki/X86-64#VIRTUAL-ADDRESS-SPACE">https://en.wikipedia.org/wiki/X86-64#VIRTUAL-ADDRESS-SPACE</a>)</p>
+
+<h2><a id="user-content-streaming-simd-extensions-sse" class="anchor" href="#streaming-simd-extensions-sse" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Streaming SIMD Extensions (SSE)</h2>
+
+<p>Swift uses the SSE registers (xmm0 - xmm15) in stdlib which means that SSE
+instructions need to be enabled in CR0/CR4 registers, this is done in <a href="https://github.com/spevans/swift-project1/blob/master/kernel/init/main.asm#L89">main.asm</a>.
+Normally kernel code would not use these extra registers as it requires more
+registers to be saved in a context switch however it was easier to support them
+then to work out how to build the Swift compiler and stdlib to exclude their
+use.</p>
+
+<p><del>Since context switching is not currently implemented anyway it was easier to
+just enable SSE and use the extra registers for now.</del></p>
+
+<p>Since I removed floating point from <a href="development.html#stdlib">stdlib</a> SSE is no
+longer enabled in the kernel and the SSE register are not used or saved in
+interrupt handlers.</p>
+
+<h2><a id="user-content-globalinit" class="anchor" href="#globalinit" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>globalinit*()</h2>
+
+<p>[TODO]</p>
+
+<h2><a id="user-content-malloc-and-free" class="anchor" href="#malloc-and-free" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>malloc() and free()</h2>
+
+<p>[TODO]</p>
+
+<h2><a id="user-content-reading-data-tables-in-swift" class="anchor" href="#reading-data-tables-in-swift" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>Reading data tables in Swift</h2>
+
+<p>One of the main parts of the kernel startup was reading various system tables
+(ACPI, SMBIOS etc). These can be represented by a struct and I came up with
+three different ways of reading the data. In all cases the only inital parameter
+I had was the memory address of the table.</p>
+
+<h4><a id="user-content-1-directly-reading-into-a-swift-struct" class="anchor" href="#1-directly-reading-into-a-swift-struct" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>1. Directly reading into a Swift struct</h4>
+
+<p>The pointer can be cast to the struct and then accessed or copied using the
+<code>.pointee</code> property</p>
+
+<div class="highlight highlight-source-swift"><pre><span class="pl-k">struct</span> Test {
+    <span class="pl-k">let</span> data1: <span class="pl-c1">UInt64</span>
+    <span class="pl-k">let</span> data2: <span class="pl-c1">UInt8</span>
+}
+
+
+<span class="pl-k">var</span> s <span class="pl-k">=</span> Test(data1: <span class="pl-c1">1234</span>, data2: <span class="pl-c1">123</span>)
+<span class="pl-k">let</span> ptr <span class="pl-k">=</span> <span class="pl-c1">UnsafePointer</span><span class="pl-k">&lt;</span>Test<span class="pl-k">&gt;</span>(bitPattern: ptr_to_uint(<span class="pl-k">&amp;</span>s))<span class="pl-k">!</span>
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>data1:<span class="pl-pds">"</span></span>, ptr<span class="pl-k">.</span>pointee<span class="pl-k">.</span>data1, <span class="pl-s"><span class="pl-pds">"</span>data2<span class="pl-pds">"</span></span>, ptr<span class="pl-k">.</span>pointee<span class="pl-k">.</span>data2)
+<span class="pl-k">let</span> data <span class="pl-k">=</span> ptr<span class="pl-k">.</span>pointee
+<span class="pl-c1">print</span>(<span class="pl-s"><span class="pl-pds">"</span>data1:<span class="pl-pds">"</span></span>, data<span class="pl-k">.</span>data1, <span class="pl-s"><span class="pl-pds">"</span>data2<span class="pl-pds">"</span></span>, data<span class="pl-k">.</span>data2)</pre></div>
+
+<div class="highlight highlight-source-shell"><pre>$ swiftc -import-objc-header <span class="pl-c1">test</span>.h -emit-executable <span class="pl-c1">test</span>.swift
+$ ./test
+data1: 1234 data2 123
+data1: 1234 data2 123</pre></div>
+
+<p>Whilst simple to use it has some drawbacks. The first is that because of the
+lack of <code>__attribute__((packed))</code> a Swift struct cannot always accurately map to
+a system structure <a href="working-with-c.html#structs">see working with C structs</a>.</p>
+
+<p>Secondly, some data types most notably strings do not always have a good mapping
+between a system table and Swift. The data may simply be a fixed length string
+(eg 6 or 8 bytes) and may or may not be zero terminated. This can often only
+be mapped to a tuple since Swift doesn't support fixed length arrays.</p>
+
+<p>Finally, just pointing a struct to a memory address and directly reading values
+skips any validation of the underlying data. Also, using <code>ptr_to_uint</code> to find
+the address of a struct is a hack and not guaranteed to work. It is mostly
+exploiting how Swift currently treats structs and could break in the future.</p>
+
+<h4><a id="user-content-2-use-a-c-struct-and-a-swift-struct" class="anchor" href="#2-use-a-c-struct-and-a-swift-struct" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>2. Use a C struct and a Swift struct</h4>
+
+<p>This method uses a C struct to accurately represent the memory layout and a
+Swift struct to represent a more useful view including using String etc for any
+parsed strings. As struct members are copied from the C version to the Swift one
+they can go through any required validation. <a href="https://github.com/spevans/swift-project1/blob/master/kernel/init/smbios.swift#L73">SMBios:init()</a>
+is an example of this converting a C <code>struct smbios_header</code> to a Swift
+<code>struct SMBIOS</code>.</p>
+
+<h4><a id="user-content-3-read-individual-elements-from-a-buffer" class="anchor" href="#3-read-individual-elements-from-a-buffer" aria-hidden="true"><svg aria-hidden="true" class="octicon octicon-link" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1h-1c-1.5 0-3-1.69-3-3.5s1.55-3.5 3-3.5h4c1.45 0 3 1.69 3 3.5 0 1.41-0.91 2.72-2 3.25v-1.16c0.58-0.45 1-1.27 1-2.09 0-1.28-1.02-2.5-2-2.5H4c-0.98 0-2 1.22-2 2.5s1 2.5 2 2.5z m9-3h-1v1h1c1 0 2 1.22 2 2.5s-1.02 2.5-2 2.5H9c-0.98 0-2-1.22-2-2.5 0-0.83 0.42-1.64 1-2.09v-1.16c-1.09 0.53-2 1.84-2 3.25 0 1.81 1.55 3.5 3 3.5h4c1.45 0 3-1.69 3-3.5s-1.5-3.5-3-3.5z"></path></svg></a>3. Read individual elements from a buffer</h4>
+
+<p>An earlier method I had come up with was <a href="https://github.com/spevans/swift-project1/blob/master/kernel/klib/MemoryBufferReader.swift">MemoryBufferReader</a>.
+This was used for reading from mmapped files or any <code>UnsafeBufferPointer</code>.
+Individual items of different types can be sequentially read and it allows for
+sub-buffers to be created and read. An example of its use can be seen <a href="https://github.com/spevans/swift-project1/blob/master/kernel/init/bootparams.swift#L514">here</a>.</p>
+
+<p>Im still undecided about the best method for reading raw tables, however method
+2 is currently my preferred one.</p>
+
+
+<table style="border-collapse: collapse; border: 0px;">
+    <tr style="border: none">
+        <td style="border: none; text-align: center; width: 40%"><a href="development.html">&lt; Prev</a></td>
+        <td style="border: none; text-align: center; width: 20%"><a href="index.html">Top</a></td>
+        <td style="border: none; text-align: center; width: 40%"><a href="working-with-c.html">Next &gt;</a></td>
+    </tr>
+</table>
+
+</article>
+</div>
+</body>

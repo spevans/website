@@ -1,0 +1,4 @@
+ konicawc.c |  355 +++++++++++++++++++++++++++++++++++++++++--------------------
+ usbvideo.c |   93 ++++++++++-----
+ usbvideo.h |   18 ++-
+ 3 files changed, 323 insertions(+), 143 deletions(-)

@@ -1,0 +1,90 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+<html>
+  <head>
+    <title>Konica USB Webcam Linux Driver</title>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  </head>
+
+  <body>
+    <h1>Konica USB Webcam Linux Driver</h1>
+    This is a linux driver for webcams based on a chipset by Konica.
+    This chipset is used in the Intel YC76 and should work with any
+    USB webcam that has vendor/product code 0x04c8, 0x0720.
+    <p>
+    The camera works in four modes: 160x120, 160x136, 176x144, 320x240 with
+    the mode and camera settings set by the following module options:
+      <table border="1">
+	<tr><td>Option</td><td>Description</td><td>Values</td><td>Default</td></tr>
+	<tr><td><code>size</code></td><td>Frame Size</td><td>0: 160x120<br>1: 160x136<br>2: 176x144<br>3: 320x240</td><td>0</td></tr>
+	<tr><td><code>speed</code></td><td>FPS</td><td>0 - 6 (see below)</td><td>6</td></tr>
+	<tr><td><code>brightness</code></td><td>Initial brightness</td><td>0 - 108</td><td>54</td></tr>
+	<tr><td><code>contrast</code></td><td>Initial contrast</td><td>0 - 108</td><td>54</td></tr>
+	<tr><td><code>saturation</code></td><td>Initial saturation</td><td>0 - 108</td><td>54</td></tr>
+	<tr><td><code>sharpness</code></td><td>Initial brightness</td><td>0 - 108</td><td>54</td></tr>
+	<tr><td><code>whitebal</code></td><td>Initial white balance</td><td>0 - 363</td><td>270</td></tr>
+	<tr><td><code>debug</code></td><td>Debug level</td><td>0-9</td><td>0</td></tr>
+      </table>
+    <p>
+      The speed of the camera (FPS) using the <code>speed</code> option varies according to the <code>size</code><br>
+      <table border="1">
+	<tr><td>Size \ Speed</td><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td></tr>
+	<tr><td>0</td><td>8.0</td><td>13.3</td><td>16.0</td><td>20.0</td><td>24.0</td><td>26.6</td><td>33.3</td></tr>
+	<tr><td>1</td><td>8.0</td><td>13.3</td><td>16.0</td><td>20.0</td><td>24.0</td><td>26.6</td><td>33.3</td></tr>
+	<tr><td>2</td><td>6.0</td><td>10.0</td><td>12.0</td><td>15.0</td><td>18.0</td><td>20.0</td><td>25.0</td></tr>
+	<tr><td>3</td><td>2.0</td><td>3.3</td><td>4.0</td><td>5.0</td><td>6.0</td><td>6.6</td><td>8.3</td></tr>
+	</table>
+      <p>
+      Patch for 2.5.4-pre2 <a href="patch-2.5.4-pre2-konicawc.diff">patch-2.5.4-pre2-konicawc.diff</a>
+      <a href="patch-2.5.4-pre2-konicawc.diffstat">(diffstat)</a><br><br>
+      Updated Feb 10: Includes <code>speed</code> option and brightness / contrast controls<br>
+      Patch for 2.5.4-pre5 <a href="patch-2.5.4-pre5-konicawc.diff">patch-2.5.4-pre5-konicawc.diff</a>
+      <a href="patch-2.5.4-pre5-konicawc.diffstat">(diffstat)</a><br><br>
+	
+	Patch (01-May-2002)
+      <li> Fixes occasional corrupton.
+      <li> Allows the frame rate to be adjusted dynamically.
+      <li> Minor code cleanups.
+	<br>
+	<p>    
+      Patch for 2.5.12 <a href="patch-2.5.12-konicawc.diff">patch-2.5.12-konicawc.diff</a>
+      <a href="patch-2.5.12-konicawc.diffstat">(diffstat)</a>
+	<br><br>
+	Patch (11-May-2002)
+	<li> Add 160x120 Mode
+	<li> Minor code cleanups				   
+	<br>
+      Forward port of latest code to 2.5.15 and backport to 2.4.19-pre8. The 2.4 backport<br>
+      currently doesnt have the dynamic frame size and speed IOCTL as usbvideo.c hasnt been 
+      fully backported.
+	<br>
+      <a href="patch-2.5.15-konicawc.diff">patch-2.5.15-konicawc.diff</a>
+      <a href="patch-2.5.15-konicawc.diffstat">(diffstat)</a>
+	<br>
+      <a href="patch-2.4.19-pre8-konicawc.diff">patch-2.4.19-pre8-konicawc.diff</a>
+      <a href="patch-2.4.19-pre8-konicawc.diffstat">(diffstat)</a>
+	<br>
+	The only remaining issue are minor corruption and excessive CPU use which sometimes
+	leads to frames being dropped.					     
+	<br><br>
+      Patch (29-Sept-2002)
+      <li> More dropped frame bugs removed. They still occur but only if the data
+	   stream gets out of sync.
+	  <br>
+	The latest code is now in 2.5 as of 2.5.32. Below are some backports to 2.4.<br>
+	They also include a backport of the latest fixes to the usbvideo module which
+	is used by some of the USB cameras.
+	<br>
+	<a href="patch-2.4.19-konicawc.diff">patch-2.4.19-konicawc.diff</a>
+	<br>
+	<a href="patch-2.4.20-pre8-konicawc.diff">patch-2.4.20-pre8-konicawc.diff</a>
+
+    <p>
+    <hr>
+    <address><a href="mailto:spse@secret.org.uk">Simon Evans</a></address>
+<!-- Created: Wed Feb  6 02:30:47 GMT 2002 -->
+<!-- hhmts start -->
+Last modified: Mon Sep 30 03:08:51 BST 2002
+<!-- hhmts end -->
+  </body>
+</html>
